@@ -1,0 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #0f212e;
+    --bg-sidebar: #071624;
+    --bg-card: #1a2c38;
+    --bg-input: #0f212e;
+    --bg-hover-dark: #2f4553;
+    
+    --color-primary: #00e701;
+    --color-primary-hover: #1fff20;
+    --color-secondary: #1475e1;
+    
+    --text-main: #ffffff;
+    --text-muted: #b1bad2;
+    --text-dim: #87909c;
+    
+    --border-subtle: #213743;
+    --border-focus: #2f4553;
+
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    background-color: #0f212e;
+    color: #ffffff;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f212e;
+}
+::-webkit-scrollbar-thumb {
+  background: #213743;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2f4553;
+}
+
+/* Stake Premium Components */
+.stake-card {
+  background: #1a2c38;
+  border-radius: 12px;
+  border: 1px solid #213743;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.stake-btn-primary {
+  background: #00e701;
+  color: #000000;
+  font-weight: 800;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 8px;
+  padding: 0.85rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 14px rgba(0, 231, 1, 0.25);
+}
+.stake-btn-primary:hover:not(:disabled) {
+  background: #1fff20;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 231, 1, 0.4);
+}
+.stake-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.stake-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.stake-btn-secondary {
+  background: #2f4553;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: 1px solid #3a5468;
+  border-radius: 6px;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+.stake-btn-secondary:hover:not(:disabled) {
+  background: #3a5468;
+  border-color: #4a677d;
+}
+
+.stake-input {
+  background: #0f212e;
+  border: 1.5px solid #213743;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  outline: none;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+.stake-input:focus {
+  border-color: #00e701;
+  box-shadow: 0 0 0 3px rgba(0, 231, 1, 0.15);
+}
+
+.stake-badge {
+  background: rgba(0, 231, 1, 0.12);
+  color: #00e701;
+  border: 1px solid rgba(0, 231, 1, 0.3);
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Glassmorphism & Animations */
+.glass-panel {
+  background: rgba(26, 44, 56, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(33, 55, 67, 0.8);
+}
+
+@keyframes float-up {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-float-up {
+  animation: float-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
