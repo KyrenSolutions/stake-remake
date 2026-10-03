@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { generateProvablyFairPair, type ProvablyFairState } from '../utils/provablyFair';
 import { sound } from '../utils/soundEngine';
+import { useAuth } from './AuthContext';
+import { getRakebackRate, getVipInfo } from '../utils/userStorage';
 
 export type Currency = 'GC' | 'SC';
 export type GameId = 
@@ -49,7 +51,13 @@ interface GameContextType {
   placeBet: (amount: number) => boolean;
   addWin: (payout: number, multiplier: number, gameName: string, betAmount: number) => void;
   addLoss: (gameName: string, betAmount: number) => void;
-  claimFaucet: () => void;
+  // Rakeback System
+  isRakebackModalOpen: boolean;
+  setRakebackModalOpen: (open: boolean) => void;
+  claimRakeback: () => { gcClaimed: number; scClaimed: number; success: boolean };
+  unclaimedRakebackGC: number;
+  unclaimedRakebackSC: number;
+  rakebackRate: number;
   isMuted: boolean;
   toggleMute: () => void;
   isProvablyFairModalOpen: boolean;
@@ -75,41 +83,31 @@ const initialStats: SessionStats = {
 };
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser, updateCurrentUser, openAuthModal } = useAuth();
+
   const [currency, setCurrency] = useState<Currency>('GC');
-  const [gcBalance, setGcBalance] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('stake_gc_bal');
-      const parsed = saved ? parseFloat(saved) : NaN;
-      return !isNaN(parsed) ? parsed : 100000;
-    } catch {
-      return 100000;
-    }
-  });
-  const [scBalance, setScBalance] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('stake_sc_bal');
-      const parsed = saved ? parseFloat(saved) : NaN;
-      return !isNaN(parsed) ? parsed : 250.00;
-    } catch {
-      return 250.00;
-    }
-  });
+  const [gcBalance, setGcBalance] = useState<number>(() => currentUser?.gcBalance ?? 0);
+  const [scBalance, setScBalance] = useState<number>(() => currentUser?.scBalance ?? 0);
   const [activeGame, setActiveGame] = useState<GameId>('mines');
   const [betHistory, setBetHistory] = useState<BetHistoryItem[]>([]);
   const [provablyFair, setProvablyFair] = useState<ProvablyFairState>(generateProvablyFairPair());
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isProvablyFairModalOpen, setProvablyFairModalOpen] = useState<boolean>(false);
   const [isStatsModalOpen, setStatsModalOpen] = useState<boolean>(false);
+  const [isRakebackModalOpen, setRakebackModalOpen] = useState<boolean>(false);
   const [sessionStats, setSessionStats] = useState<SessionStats>(initialStats);
   const [godMode, setGodMode] = useState<boolean>(true);
 
+  // Sync balances whenever currentUser changes (login, logout, switch account)
   useEffect(() => {
-    localStorage.setItem('stake_gc_bal', gcBalance.toString());
-  }, [gcBalance]);
-
-  useEffect(() => {
-    localStorage.setItem('stake_sc_bal', scBalance.toString());
-  }, [scBalance]);
+    if (currentUser) {
+      setGcBalance(currentUser.gcBalance);
+      setScBalance(currentUser.scBalance);
+    } else {
+      setGcBalance(0);
+      setScBalance(0);
+    }
+  }, [currentUser]);
 
   // Initial dummy bets for live feed realism
   useEffect(() => {
@@ -139,17 +137,48 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSessionStats(initialStats);
   };
 
+  // Current user's rakeback rate (5% to 15% of the 1% house edge)
+  const currentVipTier = currentUser ? getVipInfo(currentUser).tier : 'Bronze';
+  const rakebackRate = getRakebackRate(currentVipTier);
+  const unclaimedRakebackGC = currentUser?.unclaimedRakebackGC ?? 0;
+  const unclaimedRakebackSC = currentUser?.unclaimedRakebackSC ?? 0;
+
   const placeBet = (amount: number): boolean => {
-    if (amount <= 0) return false;
-    if (currency === 'GC') {
-      if (gcBalance < amount) return false;
-      setGcBalance(prev => prev - amount);
-    } else {
-      if (scBalance < amount) return false;
-      setScBalance(prev => prev - amount);
+    if (!currentUser) {
+      openAuthModal('register', 'Create an account or sign in to start playing and earning rakeback!');
+      return false;
     }
 
-    // Update wagered & deduct initial bet from profit
+    if (amount <= 0) return false;
+
+    // Rakeback calculation: Bet Amount * House Edge (1%) * VIP Rakeback Rate
+    const rakebackEarned = amount * 0.01 * rakebackRate;
+
+    if (currency === 'GC') {
+      if (gcBalance < amount) return false;
+      const nextGc = gcBalance - amount;
+      setGcBalance(nextGc);
+      updateCurrentUser(prev => ({
+        ...prev,
+        gcBalance: nextGc,
+        totalWageredGC: prev.totalWageredGC + amount,
+        totalProfitGC: prev.totalProfitGC - amount,
+        unclaimedRakebackGC: (prev.unclaimedRakebackGC || 0) + rakebackEarned,
+      }));
+    } else {
+      if (scBalance < amount) return false;
+      const nextSc = scBalance - amount;
+      setScBalance(nextSc);
+      updateCurrentUser(prev => ({
+        ...prev,
+        scBalance: nextSc,
+        totalWageredSC: prev.totalWageredSC + amount,
+        totalProfitSC: prev.totalProfitSC - amount,
+        unclaimedRakebackSC: (prev.unclaimedRakebackSC || 0) + rakebackEarned,
+      }));
+    }
+
+    // Update session wagered & deduct initial bet from session profit
     setSessionStats(prev => ({
       ...prev,
       wagered: {
@@ -168,10 +197,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addWin = (payout: number, multiplier: number, gameName: string, betAmount: number) => {
+    if (!currentUser) return;
+
     if (currency === 'GC') {
-      setGcBalance(prev => prev + payout);
+      const nextGc = gcBalance + payout;
+      setGcBalance(nextGc);
+      updateCurrentUser(prev => ({
+        ...prev,
+        gcBalance: nextGc,
+        totalWins: prev.totalWins + 1,
+        totalProfitGC: prev.totalProfitGC + payout,
+      }));
     } else {
-      setScBalance(prev => prev + payout);
+      const nextSc = scBalance + payout;
+      setScBalance(nextSc);
+      updateCurrentUser(prev => ({
+        ...prev,
+        scBalance: nextSc,
+        totalWins: prev.totalWins + 1,
+        totalProfitSC: prev.totalProfitSC + payout,
+      }));
     }
 
     // Add payout back to profit & increment wins
@@ -192,43 +237,76 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const newItem: BetHistoryItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      user: 'You',
+      id: Math.random().toString(36).substring(2, 11),
+      user: currentUser.username,
       game: gameName,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       betAmount,
       multiplier,
       payout,
-      currency
+      currency,
     };
 
     setBetHistory(prev => [newItem, ...prev.slice(0, 19)]);
   };
 
   const addLoss = (gameName: string, betAmount: number) => {
+    if (!currentUser) return;
+
     sound.playLoss();
     setSessionStats(prev => ({
       ...prev,
       losses: prev.losses + 1,
     }));
 
+    updateCurrentUser(prev => ({
+      ...prev,
+      totalLosses: prev.totalLosses + 1,
+    }));
+
     const newItem: BetHistoryItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      user: 'You',
+      id: Math.random().toString(36).substring(2, 11),
+      user: currentUser.username,
       game: gameName,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       betAmount,
       multiplier: 0,
       payout: 0,
-      currency
+      currency,
     };
     setBetHistory(prev => [newItem, ...prev.slice(0, 19)]);
   };
 
-  const claimFaucet = () => {
-    setGcBalance(prev => prev + 25000);
-    setScBalance(prev => prev + 10);
+  const claimRakeback = (): { gcClaimed: number; scClaimed: number; success: boolean } => {
+    if (!currentUser) {
+      openAuthModal('register', 'Create an account to start earning and claiming rakeback!');
+      return { gcClaimed: 0, scClaimed: 0, success: false };
+    }
+
+    const gcToClaim = currentUser.unclaimedRakebackGC || 0;
+    const scToClaim = currentUser.unclaimedRakebackSC || 0;
+
+    if (gcToClaim <= 0 && scToClaim <= 0) {
+      return { gcClaimed: 0, scClaimed: 0, success: false };
+    }
+
+    const nextGc = gcBalance + gcToClaim;
+    const nextSc = scBalance + scToClaim;
+    setGcBalance(nextGc);
+    setScBalance(nextSc);
+
+    updateCurrentUser(prev => ({
+      ...prev,
+      gcBalance: nextGc,
+      scBalance: nextSc,
+      unclaimedRakebackGC: 0,
+      unclaimedRakebackSC: 0,
+      totalRakebackClaimedGC: (prev.totalRakebackClaimedGC || 0) + gcToClaim,
+      totalRakebackClaimedSC: (prev.totalRakebackClaimedSC || 0) + scToClaim,
+    }));
+
     sound.playWin();
+    return { gcClaimed: gcToClaim, scClaimed: scToClaim, success: true };
   };
 
   return (
@@ -246,7 +324,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       placeBet,
       addWin,
       addLoss,
-      claimFaucet,
+      isRakebackModalOpen,
+      setRakebackModalOpen,
+      claimRakeback,
+      unclaimedRakebackGC,
+      unclaimedRakebackSC,
+      rakebackRate,
       isMuted,
       toggleMute,
       isProvablyFairModalOpen,

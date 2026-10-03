@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Users } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface ChatMessage {
   id: string;
@@ -11,7 +12,8 @@ interface ChatMessage {
 }
 
 export const LiveChat: React.FC = () => {
-  const [isOpen, setIsOpen] = useState<boolean>(true);
+  const { currentUser, vipInfo, openAuthModal } = useAuth();
+  const [isOpen, setIsOpen] = useState<boolean>(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -63,10 +65,15 @@ export const LiveChat: React.FC = () => {
     e.preventDefault();
     if (!input.trim()) return;
 
+    if (!currentUser) {
+      openAuthModal('register', 'Create an account to chat with the community!');
+      return;
+    }
+
     const myMsg: ChatMessage = {
       id: Math.random().toString(36).substring(2),
-      user: 'You',
-      badge: 'PRO',
+      user: currentUser.username,
+      badge: vipInfo ? `VIP ${vipInfo.tier.toUpperCase()}` : 'VIP',
       text: input,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -79,16 +86,16 @@ export const LiveChat: React.FC = () => {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 right-5 bg-[#1a2c38] text-white p-3.5 rounded-full border border-[#213743] shadow-2xl hover:bg-[#2f4553] transition z-30 flex items-center gap-2 font-bold text-xs cursor-pointer"
+        className="fixed bottom-5 right-5 bg-[#1a2c38] text-white p-3.5 rounded-full border border-[#213743] shadow-2xl hover:bg-[#2f4553] transition z-30 flex items-center gap-2 font-bold text-xs cursor-pointer group"
       >
-        <MessageSquare className="w-4 h-4 text-[#00e701]" />
+        <MessageSquare className="w-4 h-4 text-[#00e701] group-hover:scale-110 transition" />
         <span>Live Chat</span>
       </button>
     );
   }
 
   return (
-    <aside className="w-80 bg-[#071624] border-l border-[#213743] min-h-[calc(100vh-4rem)] flex flex-col select-none shrink-0 shadow-xl">
+    <aside className="fixed bottom-5 right-5 w-80 h-[500px] bg-[#071624] border border-[#213743] rounded-2xl flex flex-col select-none shrink-0 shadow-2xl z-40 overflow-hidden">
       {/* Header */}
       <div className="h-14 border-b border-[#213743] px-4 flex items-center justify-between bg-[#1a2c38]/90 backdrop-blur-sm">
         <div className="flex items-center gap-2 text-xs font-bold text-white">
@@ -138,7 +145,7 @@ export const LiveChat: React.FC = () => {
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Type a message..."
+          placeholder={currentUser ? "Type a message..." : "Sign in or create account to chat..."}
           className="flex-1 bg-[#0f212e] border border-[#213743] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-[#00e701] transition"
         />
         <button
