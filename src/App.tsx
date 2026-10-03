@@ -11,6 +11,9 @@ import { LiveStatsModal } from './components/modals/LiveStatsModal';
 import { AuthModal } from './components/modals/AuthModal';
 import { UserProfileModal } from './components/modals/UserProfileModal';
 import { RakebackModal } from './components/modals/RakebackModal';
+import { OwnerProvider } from './context/OwnerContext';
+import { OwnerPinModal } from './components/modals/OwnerPinModal';
+import { OwnerPanelModal } from './components/modals/OwnerPanelModal';
 import { Sparkles, UserPlus, LogIn, HardDrive } from 'lucide-react';
 
 // Game Components
@@ -161,20 +164,24 @@ export function App() {
   return (
     <AuthProvider>
       <GameProvider>
-        <div className="min-h-screen bg-[#0f212e] flex flex-col text-white">
-          <Navbar />
-          <div className="flex flex-1">
-            <Sidebar />
-            <ActiveGameContainer />
-            <CheatSheetSidebar />
+        <OwnerProvider>
+          <div className="min-h-screen bg-[#0f212e] flex flex-col text-white">
+            <Navbar />
+            <div className="flex flex-1">
+              <Sidebar />
+              <ActiveGameContainer />
+              <CheatSheetSidebar />
+            </div>
+            <ProvablyFairModal />
+            <LiveStatsModal />
+            <AuthModal />
+            <UserProfileModal />
+            <RakebackModal />
+            <OwnerPinModal />
+            <OwnerPanelModal />
+            <LiveChat />
           </div>
-          <ProvablyFairModal />
-          <LiveStatsModal />
-          <AuthModal />
-          <UserProfileModal />
-          <RakebackModal />
-          <LiveChat />
-        </div>
+        </OwnerProvider>
       </GameProvider>
     </AuthProvider>
   );

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useGame } from '../../context/GameContext';
 import { useAuth } from '../../context/AuthContext';
+import { useOwner } from '../../context/OwnerContext';
 import { 
   ShieldCheck, 
   Volume2, 
@@ -10,7 +11,11 @@ import {
   ChevronDown, 
   BarChart2, 
   LogIn, 
-  UserPlus
+  UserPlus,
+  KeyRound,
+  Crown,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -35,6 +40,14 @@ export const Navbar: React.FC = () => {
     openAuthModal,
     setIsProfileModalOpen,
   } = useAuth();
+
+  const {
+    isOwnerUnlocked,
+    isCheatSheetOpen,
+    openOwnerModal,
+    openPinModal,
+    toggleCheatSheet,
+  } = useOwner();
 
   const formattedGc = gcBalance.toLocaleString('en-US', { maximumFractionDigits: 2 });
   const formattedSc = scBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -146,6 +159,39 @@ export const Navbar: React.FC = () => {
         >
           <ShieldCheck className="w-5 h-5" />
         </button>
+
+        {/* Owner Console & Cheat Sheet Controls */}
+        {isOwnerUnlocked ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={openOwnerModal}
+              className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/40 px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition shadow-sm cursor-pointer shadow-amber-500/10"
+              title="Open Owner Control Console (PIN: 805621)"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+              <span>OWNER</span>
+            </button>
+            <button
+              onClick={toggleCheatSheet}
+              className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+                isCheatSheetOpen
+                  ? 'bg-[#00e701]/15 text-[#00e701] border-[#00e701]/40'
+                  : 'bg-[#1a2c38] text-[#87909c] border-[#213743] hover:text-white'
+              }`}
+              title={isCheatSheetOpen ? 'Hide Cheat Sheet Sidebar' : 'Show Cheat Sheet Sidebar'}
+            >
+              {isCheatSheetOpen ? <Eye className="w-4 h-4 text-[#00e701]" /> : <EyeOff className="w-4 h-4" />}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={openPinModal}
+            className="p-2 text-[#87909c] hover:text-amber-400 hover:bg-[#2f4553] rounded-lg transition cursor-pointer"
+            title="Owner Passcode Entry (Press Ctrl+Shift+O)"
+          >
+            <KeyRound className="w-4 h-4" />
+          </button>
+        )}
 
         {/* User Auth Buttons or Profile Pill */}
         {currentUser ? (

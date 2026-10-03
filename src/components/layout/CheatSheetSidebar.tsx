@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
-import { Eye, EyeOff, Sparkles, Terminal, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { useOwner } from '../../context/OwnerContext';
+import { Eye, EyeOff, Terminal, ShieldAlert, CheckCircle2, Crown, Sliders, X } from 'lucide-react';
 import { 
   solveCrash, 
   solveKeno, 
@@ -15,6 +16,7 @@ const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 
 
 export const CheatSheetSidebar: React.FC = () => {
   const { activeGame, provablyFair, godMode, setGodMode } = useGame();
+  const { isOwnerUnlocked, isCheatSheetOpen, setCheatSheetOpen, openOwnerModal } = useOwner();
   const [enabled, setEnabled] = useState<boolean>(true);
 
   // 100% Exact Prediction calculated directly from provablyFair seed solvers
@@ -129,33 +131,55 @@ export const CheatSheetSidebar: React.FC = () => {
     }
   }, [activeGame, provablyFair]);
 
+  if (!isOwnerUnlocked || !isCheatSheetOpen) {
+    return null;
+  }
+
   return (
     <aside className="w-72 bg-[#071624] border-l border-[#213743] min-h-[calc(100vh-4rem)] p-4 flex flex-col justify-between select-none shrink-0 shadow-2xl">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#213743] pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#00e701]/10 border border-[#00e701]/30 flex items-center justify-center text-[#00e701]">
-              <Sparkles className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <Crown className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-extrabold text-white text-xs tracking-wide uppercase">Cheat Sheet</h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-extrabold text-white text-xs tracking-wide uppercase">Cheat Sheet</h3>
+                <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 py-0.2 rounded font-mono font-bold">805621</span>
+              </div>
               <span className="text-[10px] text-[#00e701] font-mono font-bold block">100% Exact Solver</span>
             </div>
           </div>
 
-          {/* Toggle */}
-          <button
-            onClick={() => setEnabled(!enabled)}
-            className={`p-1.5 rounded-lg border transition cursor-pointer ${
-              enabled 
-                ? 'bg-[#00e701]/20 text-[#00e701] border-[#00e701]/40' 
-                : 'bg-[#1a2c38] text-[#87909c] border-[#213743]'
-            }`}
-            title={enabled ? 'Disable Cheat Predictor' : 'Enable Cheat Predictor'}
-          >
-            {enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={openOwnerModal}
+              className="p-1.5 rounded-lg border border-[#213743] bg-[#1a2c38] hover:bg-[#2f4553] text-amber-400 transition cursor-pointer"
+              title="Open Owner Control Console"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setEnabled(!enabled)}
+              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                enabled 
+                  ? 'bg-[#00e701]/20 text-[#00e701] border-[#00e701]/40' 
+                  : 'bg-[#1a2c38] text-[#87909c] border-[#213743]'
+              }`}
+              title={enabled ? 'Hide Solver Predictions' : 'Show Solver Predictions'}
+            >
+              {enabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setCheatSheetOpen(false)}
+              className="p-1.5 rounded-lg border border-[#213743] bg-[#1a2c38] hover:bg-[#2f4553] text-[#87909c] hover:text-white transition cursor-pointer"
+              title="Close Cheat Sheet"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {enabled ? (
