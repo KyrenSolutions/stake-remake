@@ -3,6 +3,7 @@ import { useGame } from '../../context/GameContext';
 import { sound } from '../../utils/soundEngine';
 import { Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useOwner } from '../../context/OwnerContext';
 
 type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -47,6 +48,7 @@ interface Ball {
 
 export const Plinko: React.FC = () => {
   const { currency, placeBet, addWin } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [betAmount, setBetAmount] = useState<number>(100);
   const [risk, setRisk] = useState<RiskLevel>('medium');
   const [rows, setRows] = useState<number>(12);
@@ -60,8 +62,12 @@ export const Plinko: React.FC = () => {
 
     // Deterministically pick bin index based on coin flips for the row count
     let binIndex = 0;
-    for (let r = 0; r < rows; r++) {
-      if (Math.random() > 0.5) binIndex++;
+    if (riggedOutcomes.plinkoEdgeMagnet) {
+      binIndex = 0;
+    } else {
+      for (let r = 0; r < rows; r++) {
+        if (Math.random() > 0.5) binIndex++;
+      }
     }
 
     const newBall: Ball = {
@@ -156,6 +162,9 @@ export const Plinko: React.FC = () => {
           let hitBin = Math.floor((ball.x - binsStart) / binWidth);
           if (hitBin < 0) hitBin = 0;
           if (hitBin >= totalBins) hitBin = totalBins - 1;
+          if (riggedOutcomes.plinkoEdgeMagnet) {
+            hitBin = 0;
+          }
 
           const mult = activeMultipliers[hitBin];
           const payout = parseFloat((ball.betAmount * mult).toFixed(2));
@@ -185,7 +194,7 @@ export const Plinko: React.FC = () => {
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [rows, risk, activeMultipliers]);
+  }, [rows, risk, activeMultipliers, addWin, riggedOutcomes.plinkoEdgeMagnet]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -4,9 +4,11 @@ import { sound } from '../../utils/soundEngine';
 import { Dices, RefreshCw } from 'lucide-react';
 
 import { solveDice } from '../../utils/provablyFair';
+import { useOwner } from '../../context/OwnerContext';
 
 export const Dice: React.FC = () => {
   const { currency, placeBet, addWin, addLoss, provablyFair } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [betAmount, setBetAmount] = useState<number>(100);
   const [target, setTarget] = useState<number>(50.00);
   const [isRollOver, setIsRollOver] = useState<boolean>(true);
@@ -23,7 +25,10 @@ export const Dice: React.FC = () => {
     if (isRolling) return;
 
     // Get exact roll for current seed & nonce BEFORE deducting bet
-    const roll = solveDice(provablyFair.serverSeed, provablyFair.clientSeed, provablyFair.nonce);
+    const naturalRoll = solveDice(provablyFair.serverSeed, provablyFair.clientSeed, provablyFair.nonce);
+    const roll = riggedOutcomes.diceGuaranteedWin
+      ? (isRollOver ? Math.min(99.98, parseFloat((target + 5.0).toFixed(2))) : Math.max(0.02, parseFloat((target - 5.0).toFixed(2))))
+      : naturalRoll;
 
     if (!placeBet(betAmount)) return;
 

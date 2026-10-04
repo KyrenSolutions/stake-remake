@@ -47,10 +47,18 @@ export const Navbar: React.FC = () => {
     openOwnerModal,
     openPinModal,
     toggleCheatSheet,
+    streamerSettings,
   } = useOwner();
 
-  const formattedGc = gcBalance.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  const formattedSc = scBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const effectiveGc = (streamerSettings.streamerModeActive && streamerSettings.fakeDisplayBalanceGC !== null)
+    ? streamerSettings.fakeDisplayBalanceGC
+    : gcBalance;
+  const effectiveSc = (streamerSettings.streamerModeActive && streamerSettings.fakeDisplayBalanceSC !== null)
+    ? streamerSettings.fakeDisplayBalanceSC
+    : scBalance;
+
+  const formattedGc = effectiveGc.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const formattedSc = effectiveSc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const currentProfit = sessionStats.profit[currency];
   const isProfitPositive = currentProfit >= 0;

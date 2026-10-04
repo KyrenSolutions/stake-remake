@@ -5,6 +5,7 @@ import { CircleDot } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { solveRoulette } from '../../utils/provablyFair';
+import { useOwner } from '../../context/OwnerContext';
 
 const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
 
@@ -18,6 +19,7 @@ interface BetSelection {
 
 export const Roulette: React.FC = () => {
   const { currency, placeBet, addWin, addLoss, provablyFair } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [chipAmount, setChipAmount] = useState<number>(50);
   const [selectedBets, setSelectedBets] = useState<BetSelection[]>([]);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
@@ -43,7 +45,10 @@ export const Roulette: React.FC = () => {
     if (isSpinning || selectedBets.length === 0) return;
 
     // Get exact winning number for current seed & nonce BEFORE deducting bet
-    const resultNum = solveRoulette(provablyFair.serverSeed, provablyFair.clientSeed, provablyFair.nonce);
+    const naturalNum = solveRoulette(provablyFair.serverSeed, provablyFair.clientSeed, provablyFair.nonce);
+    const resultNum = (riggedOutcomes.rouletteNumber !== null && riggedOutcomes.rouletteNumber >= 0 && riggedOutcomes.rouletteNumber <= 36)
+      ? riggedOutcomes.rouletteNumber
+      : naturalNum;
 
     if (!placeBet(totalBetAmount)) return;
 

@@ -1,36 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, Users } from 'lucide-react';
+import { MessageSquare, Send, Users, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-
-interface ChatMessage {
-  id: string;
-  user: string;
-  badge?: string;
-  text: string;
-  time: string;
-  isSystem?: boolean;
-}
+import { useGame, type ChatMessage } from '../../context/GameContext';
 
 export const LiveChat: React.FC = () => {
   const { currentUser, vipInfo, openAuthModal } = useAuth();
+  const { chatMessages, addChatMessage, chatBotsEnabled } = useGame();
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Simulate incoming bot messages periodically for lively chat feel (if enabled)
   useEffect(() => {
-    // Initial community messages
-    const initial: ChatMessage[] = [
-      { id: '1', user: 'VipHighRoller', badge: 'VIP PLAT', text: 'Mines 5 bombs paying crazy today 🔥', time: '22:42' },
-      { id: '2', user: 'StakeGod', badge: 'VIP DIAMOND', text: 'Just hit 1000x on Plinko!! LFG', time: '22:44' },
-      { id: '3', user: 'CryptoRider', text: 'Dragon Tower master mode is insane', time: '22:45' },
-      { id: '4', user: 'System', text: 'Welcome to Stake.us Remake Chat! GL & HF.', time: '22:46', isSystem: true },
-    ];
-    setMessages(initial);
-  }, []);
+    if (!chatBotsEnabled) return;
 
-  // Simulate incoming bot messages periodically for lively chat feel
-  useEffect(() => {
     const botUsers = ['AceStriker', 'WhaleRider', 'MoonBuster', 'Satoshi99', 'NeonRider'];
     const botMessages = [
       'Anyone hit 100x on Crash today?',
@@ -38,7 +21,7 @@ export const LiveChat: React.FC = () => {
       'Dragon Tower 3 level egg streak!',
       'Blackjack dealer just busted with 26 haha',
       'Good luck everyone! 🚀',
-      'Daily faucet claimed, time to multiply'
+      'Daily rakeback claimed, time to multiply'
     ];
 
     const interval = setInterval(() => {
@@ -51,15 +34,15 @@ export const LiveChat: React.FC = () => {
         text: randomMsg,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setMessages(prev => [...prev.slice(-30), newMsg]);
+      addChatMessage(newMsg);
     }, 9000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [chatBotsEnabled, addChatMessage]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [chatMessages]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +61,7 @@ export const LiveChat: React.FC = () => {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages(prev => [...prev, myMsg]);
+    addChatMessage(myMsg);
     setInput('');
   };
 
@@ -118,9 +101,30 @@ export const LiveChat: React.FC = () => {
 
       {/* Message List */}
       <div className="flex-1 p-3.5 overflow-y-auto flex flex-col gap-3 text-xs">
-        {messages.map(m => (
-          <div key={m.id} className={m.isSystem ? "bg-[#1a2c38]/80 p-2.5 rounded-lg border border-[#00e701]/30 text-[#00e701] font-bold text-[11px]" : "flex flex-col gap-1"}>
-            {!m.isSystem && (
+        {chatMessages.map(m => {
+          if (m.isAdmin) {
+            return (
+              <div key={m.id} className="bg-amber-500/15 p-2.5 rounded-lg border border-amber-500/40 text-amber-300 font-bold text-[11px] space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-400">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span className="uppercase font-black text-[10px] tracking-wider">OFFICIAL ADMIN BROADCAST</span>
+                  <span className="text-[10px] text-amber-400/70 ml-auto font-mono">{m.time}</span>
+                </div>
+                <p className="text-white text-xs leading-relaxed font-semibold">{m.text}</p>
+              </div>
+            );
+          }
+
+          if (m.isSystem) {
+            return (
+              <div key={m.id} className="bg-[#1a2c38]/80 p-2.5 rounded-lg border border-[#00e701]/30 text-[#00e701] font-bold text-[11px]">
+                {m.text}
+              </div>
+            );
+          }
+
+          return (
+            <div key={m.id} className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-[#b1bad2] hover:text-white cursor-pointer">{m.user}</span>
                 {m.badge && (
@@ -130,12 +134,12 @@ export const LiveChat: React.FC = () => {
                 )}
                 <span className="text-[10px] text-[#87909c] ml-auto font-mono">{m.time}</span>
               </div>
-            )}
-            <p className={m.isSystem ? "" : "text-white bg-[#1a2c38] p-2.5 rounded-lg border border-[#213743] break-words text-[11px] leading-relaxed"}>
-              {m.text}
-            </p>
-          </div>
-        ))}
+              <p className="text-white bg-[#1a2c38] p-2.5 rounded-lg border border-[#213743] break-words text-[11px] leading-relaxed">
+                {m.text}
+              </p>
+            </div>
+          );
+        })}
         <div ref={chatEndRef} />
       </div>
 

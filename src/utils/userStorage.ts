@@ -358,3 +358,116 @@ export function deleteLocalUser(userId: string): void {
     setActiveUserId(nextUser);
   }
 }
+
+// Find user by Username or UID
+export function findUserByQuery(query: string): UserAccount | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const users = getLocalUsers();
+  return users.find(u => u.username.toLowerCase() === q || u.uid.toLowerCase() === q || u.id === q) || null;
+}
+
+// Grant or deduct money to any user by Username or UID
+export function grantFundsToUser(
+  usernameOrUid: string,
+  gcDelta: number,
+  scDelta: number
+): { success: boolean; user?: UserAccount; error?: string } {
+  const users = getLocalUsers();
+  const q = usernameOrUid.trim().toLowerCase();
+  const target = users.find(u => u.username.toLowerCase() === q || u.uid.toLowerCase() === q);
+  if (!target) {
+    return { success: false, error: `Account with Username or UID "${usernameOrUid}" not found.` };
+  }
+
+  target.gcBalance = Math.max(0, target.gcBalance + gcDelta);
+  target.scBalance = Math.max(0, parseFloat((target.scBalance + scDelta).toFixed(2)));
+  saveLocalUsers(users);
+
+  return { success: true, user: target };
+}
+
+// Set exact balances for any user by Username or UID
+export function setExactUserBalances(
+  usernameOrUid: string,
+  gc: number,
+  sc: number
+): { success: boolean; user?: UserAccount; error?: string } {
+  const users = getLocalUsers();
+  const q = usernameOrUid.trim().toLowerCase();
+  const target = users.find(u => u.username.toLowerCase() === q || u.uid.toLowerCase() === q);
+  if (!target) {
+    return { success: false, error: `Account with Username or UID "${usernameOrUid}" not found.` };
+  }
+
+  target.gcBalance = Math.max(0, gc);
+  target.scBalance = Math.max(0, parseFloat(sc.toFixed(2)));
+  saveLocalUsers(users);
+
+  return { success: true, user: target };
+}
+
+// Set VIP tier for any user by Username or UID
+export function setUserVipTier(
+  usernameOrUid: string,
+  tier: VipTier
+): { success: boolean; user?: UserAccount; error?: string } {
+  const users = getLocalUsers();
+  const q = usernameOrUid.trim().toLowerCase();
+  const target = users.find(u => u.username.toLowerCase() === q || u.uid.toLowerCase() === q);
+  if (!target) {
+    return { success: false, error: `Account with Username or UID "${usernameOrUid}" not found.` };
+  }
+
+  let targetSC = 0;
+  switch (tier) {
+    case 'Diamond': targetSC = 250000; break;
+    case 'Platinum': targetSC = 100000; break;
+    case 'Gold': targetSC = 25000; break;
+    case 'Silver': targetSC = 5000; break;
+    case 'Bronze': default: targetSC = 500; break;
+  }
+
+  target.totalWageredSC = targetSC;
+  target.totalWageredGC = 0;
+  saveLocalUsers(users);
+
+  return { success: true, user: target };
+}
+
+// Export all user accounts as formatted JSON string
+export function exportUsersJson(): string {
+  const users = getLocalUsers();
+  return JSON.stringify(users, null, 2);
+}
+
+// Import user accounts from JSON string with validation
+export function importUsersJson(jsonStr: string): { success: boolean; count?: number; error?: string } {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (!Array.isArray(parsed)) {
+      return { success: false, error: 'Invalid backup file format: expected array of user objects.' };
+    }
+
+    const validated: UserAccount[] = parsed.filter(u => u && typeof u === 'object' && u.id && u.username);
+    if (validated.length === 0) {
+      return { success: false, error: 'No valid user accounts found in JSON.' };
+    }
+
+    saveLocalUsers(validated);
+    if (!getActiveUser() && validated.length > 0) {
+      setActiveUserId(validated[0].id);
+    }
+
+    return { success: true, count: validated.length };
+  } catch (err: any) {
+    return { success: false, error: 'Failed to parse JSON file: ' + err.message };
+  }
+}
+
+// Reset / wipe all accounts from local storage
+export function wipeAllUsers(): void {
+  localStorage.removeItem(STORAGE_USERS_KEY);
+  localStorage.removeItem(STORAGE_ACTIVE_USER_KEY);
+}
+

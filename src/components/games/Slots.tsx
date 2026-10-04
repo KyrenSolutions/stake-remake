@@ -3,6 +3,7 @@ import { useGame } from '../../context/GameContext';
 import { sound } from '../../utils/soundEngine';
 import { Layers } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useOwner } from '../../context/OwnerContext';
 
 const SYMBOLS = ['💎', '7️⃣', '👑', '🔔', '🍒', '🍋', '🍉'];
 const SYMBOL_PAYOUTS: Record<string, number> = {
@@ -17,6 +18,7 @@ const SYMBOL_PAYOUTS: Record<string, number> = {
 
 export const Slots: React.FC = () => {
   const { currency, placeBet, addWin, addLoss } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [betAmount, setBetAmount] = useState<number>(100);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
   const [reels, setReels] = useState<string[][]>([
@@ -44,6 +46,12 @@ export const Slots: React.FC = () => {
           reelCol.push(sym);
         }
         newReels.push(reelCol);
+      }
+
+      if (riggedOutcomes.slotsForceJackpot) {
+        for (let col = 0; col < 5; col++) {
+          newReels[col][1] = '7️⃣';
+        }
       }
 
       setReels(newReels);

@@ -65,11 +65,28 @@ interface GameContextType {
   // Live Session Stats
   sessionStats: SessionStats;
   resetSessionStats: () => void;
+  modifySessionStats: (updater: (prev: SessionStats) => SessionStats) => void;
   isStatsModalOpen: boolean;
   setStatsModalOpen: (open: boolean) => void;
   // God Mode Cheat State
   godMode: boolean;
   setGodMode: (enabled: boolean) => void;
+  // Feed & Chat Admin Broadcasts
+  broadcastFeedBet: (bet: BetHistoryItem) => void;
+  chatMessages: ChatMessage[];
+  addChatMessage: (msg: ChatMessage) => void;
+  chatBotsEnabled: boolean;
+  setChatBotsEnabled: (enabled: boolean) => void;
+}
+
+export interface ChatMessage {
+  id: string;
+  user: string;
+  badge?: string;
+  text: string;
+  time: string;
+  isSystem?: boolean;
+  isAdmin?: boolean;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -119,6 +136,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ];
     setBetHistory(initialBots);
   }, []);
+
+  const [chatBotsEnabled, setChatBotsEnabled] = useState<boolean>(true);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
+    { id: '1', user: 'VipHighRoller', badge: 'VIP PLAT', text: 'Mines 5 bombs paying crazy today 🔥', time: '22:42' },
+    { id: '2', user: 'StakeGod', badge: 'VIP DIAMOND', text: 'Just hit 1000x on Plinko!! LFG', time: '22:44' },
+    { id: '3', user: 'CryptoRider', text: 'Dragon Tower master mode is insane', time: '22:45' },
+    { id: '4', user: 'System', text: 'Welcome to Stake.us Remake Chat! GL & HF.', time: '22:46', isSystem: true },
+  ]);
+
+  const broadcastFeedBet = (bet: BetHistoryItem) => {
+    setBetHistory(prev => [bet, ...prev.slice(0, 19)]);
+  };
+
+  const addChatMessage = (msg: ChatMessage) => {
+    setChatMessages(prev => [...prev.slice(-40), msg]);
+  };
+
+  const modifySessionStats = (updater: (prev: SessionStats) => SessionStats) => {
+    setSessionStats(updater);
+  };
 
   const toggleMute = () => {
     const muted = sound.toggleMute();
@@ -336,10 +373,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProvablyFairModalOpen,
       sessionStats,
       resetSessionStats,
+      modifySessionStats,
       isStatsModalOpen,
       setStatsModalOpen,
       godMode,
       setGodMode,
+      broadcastFeedBet,
+      chatMessages,
+      addChatMessage,
+      chatBotsEnabled,
+      setChatBotsEnabled,
     }}>
       {children}
     </GameContext.Provider>

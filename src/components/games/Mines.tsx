@@ -5,6 +5,7 @@ import { Bomb, Gem } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { solveMinesGrid } from '../../utils/provablyFair';
+import { useOwner } from '../../context/OwnerContext';
 
 interface TileState {
   id: number;
@@ -14,6 +15,7 @@ interface TileState {
 
 export const Mines: React.FC = () => {
   const { currency, placeBet, addWin, addLoss, provablyFair, godMode } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [betAmount, setBetAmount] = useState<number>(100);
   const [mineCount, setMineCount] = useState<number>(3);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -64,6 +66,15 @@ export const Mines: React.FC = () => {
     if (!isPlaying || grid[idx].revealed || gameOver) return;
 
     const updated = [...grid];
+    if (updated[idx].isMine && riggedOutcomes.minesBombDefusal) {
+      // Defuse bomb! Turn into safe gem
+      updated[idx] = { ...updated[idx], isMine: false };
+      // Move defused mine to another unrevealed tile if available
+      const candidateIdx = updated.findIndex(t => !t.revealed && !t.isMine && t.id !== idx);
+      if (candidateIdx !== -1) {
+        updated[candidateIdx] = { ...updated[candidateIdx], isMine: true };
+      }
+    }
     updated[idx].revealed = true;
 
     if (updated[idx].isMine) {

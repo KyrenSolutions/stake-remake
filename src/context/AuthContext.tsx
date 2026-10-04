@@ -30,6 +30,7 @@ interface AuthContextType {
   switchAccount: (userId: string) => void;
   deleteAccount: (userId: string) => void;
   updateCurrentUser: (updater: (prev: UserAccount) => UserAccount) => void;
+  refreshUsers: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -137,6 +138,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
+  const refreshUsers = useCallback(() => {
+    setAllUsers(getLocalUsers());
+    setCurrentUser(getActiveUser());
+  }, []);
+
   const vipInfo = currentUser ? getVipInfo(currentUser) : null;
 
   return (
@@ -159,6 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchAccount,
         deleteAccount,
         updateCurrentUser,
+        refreshUsers,
       }}
     >
       {children}

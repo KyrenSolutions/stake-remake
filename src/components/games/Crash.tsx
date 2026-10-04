@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useGame } from '../../context/GameContext';
 import { sound } from '../../utils/soundEngine';
 import { TrendingUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { solveCrash } from '../../utils/provablyFair';
+import { useOwner } from '../../context/OwnerContext';
 
 export const Crash: React.FC = () => {
   const { currency, placeBet, addWin, addLoss, provablyFair } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [betAmount, setBetAmount] = useState<number>(100);
   const [autoCashout, setAutoCashout] = useState<number>(2.0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -25,7 +27,10 @@ export const Crash: React.FC = () => {
     if (isPlaying) return;
     
     // Calculate exact deterministic crash point for current seed & nonce BEFORE deducting bet
-    const point = solveCrash(provablyFair.serverSeed, provablyFair.clientSeed, provablyFair.nonce);
+    const naturalPoint = solveCrash(provablyFair.serverSeed, provablyFair.clientSeed, provablyFair.nonce);
+    const point = (riggedOutcomes.crashMultiplier && riggedOutcomes.crashMultiplier >= 1.01)
+      ? riggedOutcomes.crashMultiplier
+      : naturalPoint;
 
     if (!placeBet(betAmount)) return;
 
@@ -39,7 +44,7 @@ export const Crash: React.FC = () => {
     startTimeRef.current = performance.now();
   };
 
-  const handleCashout = () => {
+  const handleCashout = useCallback(() => {
     if (!isPlaying || crashed || cashedOut) return;
 
     const winMult = currentMult;
@@ -52,7 +57,7 @@ export const Crash: React.FC = () => {
     }
 
     addWin(payout, winMult, 'Crash', betAmount);
-  };
+  }, [isPlaying, crashed, cashedOut, currentMult, betAmount, addWin]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -135,7 +140,7 @@ export const Crash: React.FC = () => {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [isPlaying, cashedOut, autoCashout, betAmount]);
+  }, [isPlaying, cashedOut, autoCashout, betAmount, crashed, addLoss, handleCashout]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -3,6 +3,7 @@ import { useGame } from '../../context/GameContext';
 import { sound } from '../../utils/soundEngine';
 import { Club } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { useOwner } from '../../context/OwnerContext';
 
 interface Card {
   suit: '♠' | '♥' | '♦' | '♣';
@@ -15,6 +16,7 @@ const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 
 export const Blackjack: React.FC = () => {
   const { currency, placeBet, addWin, addLoss } = useGame();
+  const { riggedOutcomes } = useOwner();
   const [betAmount, setBetAmount] = useState<number>(100);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playerHand, setPlayerHand] = useState<Card[]>([]);
@@ -46,13 +48,17 @@ export const Blackjack: React.FC = () => {
     if (isPlaying) return;
     if (!placeBet(betAmount)) return;
 
-    const pCard1 = drawCard();
-    const pCard2 = drawCard();
-    const dCard1 = drawCard();
-    const dCard2 = drawCard();
+    let pHand: Card[];
+    if (riggedOutcomes.blackjackForce21) {
+      pHand = [
+        { suit: '♠', rank: 'A', value: 11 },
+        { suit: '♠', rank: 'K', value: 10 }
+      ];
+    } else {
+      pHand = [drawCard(), drawCard()];
+    }
 
-    const pHand = [pCard1, pCard2];
-    const dHand = [dCard1, dCard2];
+    const dHand = [drawCard(), drawCard()];
 
     setPlayerHand(pHand);
     setDealerHand(dHand);
@@ -98,9 +104,16 @@ export const Blackjack: React.FC = () => {
     let currentDHand = [...dealerHand];
     let dScore = calculateHandScore(currentDHand);
 
-    while (dScore < 17) {
-      currentDHand.push(drawCard());
-      dScore = calculateHandScore(currentDHand);
+    if (riggedOutcomes.blackjackDealerBust) {
+      while (dScore <= 21) {
+        currentDHand.push({ suit: '♣', rank: '10', value: 10 });
+        dScore = calculateHandScore(currentDHand);
+      }
+    } else {
+      while (dScore < 17) {
+        currentDHand.push(drawCard());
+        dScore = calculateHandScore(currentDHand);
+      }
     }
 
     setDealerHand(currentDHand);

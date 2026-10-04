@@ -1,10 +1,51 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { useGame } from './GameContext';
-import { type VipTier } from '../utils/userStorage';
+import { 
+  type VipTier, 
+  type UserAccount,
+  grantFundsToUser,
+  setExactUserBalances,
+  setUserVipTier,
+} from '../utils/userStorage';
+import confetti from 'canvas-confetti';
 
 const OWNER_PIN = '805621';
 const STORAGE_OWNER_KEY = 'stake_owner_unlocked_session';
+
+export interface RiggedOutcomes {
+  crashMultiplier: number | null;
+  minesBombDefusal: boolean;
+  rouletteNumber: number | null;
+  blackjackForce21: boolean;
+  blackjackDealerBust: boolean;
+  slotsForceJackpot: boolean;
+  plinkoEdgeMagnet: boolean;
+  diceGuaranteedWin: boolean;
+}
+
+export interface StreamerSettings {
+  streamerModeActive: boolean;
+  fakeDisplayBalanceGC: number | null;
+  fakeDisplayBalanceSC: number | null;
+}
+
+const defaultRiggedOutcomes: RiggedOutcomes = {
+  crashMultiplier: null,
+  minesBombDefusal: false,
+  rouletteNumber: null,
+  blackjackForce21: false,
+  blackjackDealerBust: false,
+  slotsForceJackpot: false,
+  plinkoEdgeMagnet: false,
+  diceGuaranteedWin: false,
+};
+
+const defaultStreamerSettings: StreamerSettings = {
+  streamerModeActive: false,
+  fakeDisplayBalanceGC: null,
+  fakeDisplayBalanceSC: null,
+};
 
 interface OwnerContextType {
   isOwnerUnlocked: boolean;
@@ -19,7 +60,24 @@ interface OwnerContextType {
   closePinModal: () => void;
   toggleCheatSheet: () => void;
   setCheatSheetOpen: (open: boolean) => void;
-  // Master Owner Actions
+  
+  // Game Rigging Controls
+  riggedOutcomes: RiggedOutcomes;
+  setRiggedOutcome: <K extends keyof RiggedOutcomes>(key: K, value: RiggedOutcomes[K]) => void;
+  consumeRiggedOutcome: <K extends keyof RiggedOutcomes>(key: K, defaultValue: RiggedOutcomes[K]) => void;
+  resetAllRigging: () => void;
+
+  // Streamer Mode & Platform FX
+  streamerSettings: StreamerSettings;
+  setStreamerSettings: React.Dispatch<React.SetStateAction<StreamerSettings>>;
+  triggerCoinRain: () => void;
+
+  // Multi-Target Account Grants (Target by Username or UID)
+  grantMoneyToTarget: (targetQuery: string, gc: number, sc: number) => { success: boolean; user?: UserAccount; error?: string };
+  setTargetExactBalance: (targetQuery: string, gc: number, sc: number) => { success: boolean; user?: UserAccount; error?: string };
+  setTargetVip: (targetQuery: string, tier: VipTier) => { success: boolean; user?: UserAccount; error?: string };
+
+  // Master Active User Actions (Convenience Shortcuts)
   injectCoins: (gc: number, sc: number) => void;
   setExactBalances: (gc: number, sc: number) => void;
   setVipRank: (tier: VipTier) => void;
@@ -31,7 +89,7 @@ interface OwnerContextType {
 const OwnerContext = createContext<OwnerContextType | undefined>(undefined);
 
 export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, updateCurrentUser } = useAuth();
+  const { currentUser, updateCurrentUser, refreshUsers } = useAuth();
   const { setGodMode } = useGame();
 
   const [isOwnerUnlocked, setIsOwnerUnlocked] = useState<boolean>(() => {
@@ -51,7 +109,9 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return false;
     }
   });
-  const [forcedCrashPoint, setForcedCrashPoint] = useState<number | null>(null);
+
+  const [riggedOutcomes, setRiggedOutcomes] = useState<RiggedOutcomes>(defaultRiggedOutcomes);
+  const [streamerSettings, setStreamerSettings] = useState<StreamerSettings>(defaultStreamerSettings);
 
   // If active user's UID is 805621, automatically grant owner access
   useEffect(() => {
@@ -107,6 +167,8 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsOwnerModalOpen(false);
     setIsCheatSheetOpen(false);
     setGodMode(false);
+    setRiggedOutcomes(defaultRiggedOutcomes);
+    setStreamerSettings(defaultStreamerSettings);
     try {
       sessionStorage.removeItem(STORAGE_OWNER_KEY);
     } catch (err) {
@@ -127,7 +189,64 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const closePinModal = useCallback(() => setIsPinModalOpen(false), []);
   const toggleCheatSheet = useCallback(() => setIsCheatSheetOpen(prev => !prev), []);
 
-  // Master Actions
+  // Rigging manipulation
+  const setRiggedOutcome = useCallback(<K extends keyof RiggedOutcomes>(key: K, value: RiggedOutcomes[K]) => {
+    setRiggedOutcomes(prev => ({
+      ...prev,
+      [key]: value,
+    }));
+  }, []);
+
+  const consumeRiggedOutcome = useCallback(<K extends keyof RiggedOutcomes>(key: K, defaultValue: RiggedOutcomes[K]) => {
+    setRiggedOutcomes(prev => ({
+      ...prev,
+      [key]: defaultValue,
+    }));
+  }, []);
+
+  const resetAllRigging = useCallback(() => {
+    setRiggedOutcomes(defaultRiggedOutcomes);
+  }, []);
+
+  // Platform FX: Coin rain burst
+  const triggerCoinRain = useCallback(() => {
+    confetti({
+      particleCount: 150,
+      spread: 100,
+      origin: { y: 0.3 },
+      colors: ['#00e701', '#ffd700', '#f59e0b', '#ffffff'],
+    });
+  }, []);
+
+  // Multi-Target Account Grants (Target by Username or UID)
+  const grantMoneyToTarget = useCallback((targetQuery: string, gc: number, sc: number) => {
+    const res = grantFundsToUser(targetQuery, gc, sc);
+    if (res.success && res.user) {
+      refreshUsers();
+      return { success: true, user: res.user };
+    }
+    return { success: false, error: res.error };
+  }, [refreshUsers]);
+
+  const setTargetExactBalance = useCallback((targetQuery: string, gc: number, sc: number) => {
+    const res = setExactUserBalances(targetQuery, gc, sc);
+    if (res.success && res.user) {
+      refreshUsers();
+      return { success: true, user: res.user };
+    }
+    return { success: false, error: res.error };
+  }, [refreshUsers]);
+
+  const setTargetVip = useCallback((targetQuery: string, tier: VipTier) => {
+    const res = setUserVipTier(targetQuery, tier);
+    if (res.success && res.user) {
+      refreshUsers();
+      return { success: true, user: res.user };
+    }
+    return { success: false, error: res.error };
+  }, [refreshUsers]);
+
+  // Master Actions for Active User
   const injectCoins = useCallback((gc: number, sc: number) => {
     if (!currentUser) return;
     updateCurrentUser(prev => ({
@@ -148,7 +267,6 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const setVipRank = useCallback((tier: VipTier) => {
     if (!currentUser) return;
-    // Set total wagered to match tier threshold
     let targetSC = 0;
     switch (tier) {
       case 'Diamond':
@@ -184,6 +302,11 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   }, [currentUser, updateCurrentUser]);
 
+  const forcedCrashPoint = riggedOutcomes.crashMultiplier;
+  const setForcedCrashPoint = useCallback((multiplier: number | null) => {
+    setRiggedOutcome('crashMultiplier', multiplier);
+  }, [setRiggedOutcome]);
+
   return (
     <OwnerContext.Provider
       value={{
@@ -199,6 +322,16 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         closePinModal,
         toggleCheatSheet,
         setCheatSheetOpen: setIsCheatSheetOpen,
+        riggedOutcomes,
+        setRiggedOutcome,
+        consumeRiggedOutcome,
+        resetAllRigging,
+        streamerSettings,
+        setStreamerSettings,
+        triggerCoinRain,
+        grantMoneyToTarget,
+        setTargetExactBalance,
+        setTargetVip,
         injectCoins,
         setExactBalances,
         setVipRank,
