@@ -350,6 +350,18 @@ export function updateLocalUser(updatedUser: UserAccount): void {
   }
 }
 
+// Update single user in local storage without syncing to cloud (prevents realtime echo loop)
+export function updateLocalUserWithoutSync(updatedUser: UserAccount): void {
+  const users = getLocalUsers();
+  const index = users.findIndex(u => u.id === updatedUser.id);
+  if (index !== -1) {
+    users[index] = updatedUser;
+  } else {
+    users.push(updatedUser);
+  }
+  saveLocalUsers(users);
+}
+
 // Delete user from local storage
 export function deleteLocalUser(userId: string): void {
   const users = getLocalUsers();
@@ -578,16 +590,24 @@ export async function fetchAndMergeCloudUsers(): Promise<UserAccount[]> {
 
     const cloudUsers: UserAccount[] = data.map(dbRowToUser);
     const localUsers = getLocalUsers();
+    const activeId = getActiveUserId();
 
-    // Merge: cloud accounts overwrite or add to local cache
+    // Merge: cloud accounts populate the map
     const mergedMap = new Map<string, UserAccount>();
-    localUsers.forEach(u => mergedMap.set(u.id, u));
     cloudUsers.forEach(u => mergedMap.set(u.id, u));
 
-    // Upload any local accounts missing in cloud
-    for (const u of localUsers) {
-      if (!cloudUsers.some(cu => cu.id === u.id)) {
-        await syncUserToCloud(u);
+    // For local accounts: prioritize the currently active playing user's local balance
+    // so an asynchronous network fetch never rolls back in-flight wins or bets!
+    for (const lu of localUsers) {
+      const cloudMatch = mergedMap.get(lu.id);
+      if (lu.id === activeId && cloudMatch) {
+        // Keep active player's current session balance
+        mergedMap.set(lu.id, lu);
+        // Sync active state back to cloud
+        await syncUserToCloud(lu);
+      } else if (!cloudMatch) {
+        mergedMap.set(lu.id, lu);
+        await syncUserToCloud(lu);
       }
     }
 

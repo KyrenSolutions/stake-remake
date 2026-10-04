@@ -228,25 +228,25 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rakebackEarned = amount * 0.01 * rakebackRate;
 
     if (currency === 'GC') {
-      if (gcBalance < amount) return false;
-      const nextGc = gcBalance - amount;
-      setGcBalance(nextGc);
+      const betInt = Math.round(amount);
+      if (currentUser.gcBalance < betInt) return false;
+      setGcBalance(prev => Math.max(0, prev - betInt));
       updateCurrentUser(prev => ({
         ...prev,
-        gcBalance: nextGc,
-        totalWageredGC: prev.totalWageredGC + amount,
-        totalProfitGC: prev.totalProfitGC - amount,
+        gcBalance: Math.max(0, prev.gcBalance - betInt),
+        totalWageredGC: prev.totalWageredGC + betInt,
+        totalProfitGC: prev.totalProfitGC - betInt,
         unclaimedRakebackGC: (prev.unclaimedRakebackGC || 0) + rakebackEarned,
       }));
     } else {
-      if (scBalance < amount) return false;
-      const nextSc = scBalance - amount;
-      setScBalance(nextSc);
+      const betFloat = parseFloat(amount.toFixed(2));
+      if (currentUser.scBalance < betFloat) return false;
+      setScBalance(prev => Math.max(0, parseFloat((prev - betFloat).toFixed(2))));
       updateCurrentUser(prev => ({
         ...prev,
-        scBalance: nextSc,
-        totalWageredSC: prev.totalWageredSC + amount,
-        totalProfitSC: prev.totalProfitSC - amount,
+        scBalance: Math.max(0, parseFloat((prev.scBalance - betFloat).toFixed(2))),
+        totalWageredSC: prev.totalWageredSC + betFloat,
+        totalProfitSC: prev.totalProfitSC - betFloat,
         unclaimedRakebackSC: (prev.unclaimedRakebackSC || 0) + rakebackEarned,
       }));
     }
@@ -273,23 +273,29 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser) return;
 
     if (currency === 'GC') {
-      const nextGc = gcBalance + payout;
-      setGcBalance(nextGc);
-      updateCurrentUser(prev => ({
-        ...prev,
-        gcBalance: nextGc,
-        totalWins: prev.totalWins + 1,
-        totalProfitGC: prev.totalProfitGC + payout,
-      }));
+      const winPayout = Math.round(payout);
+      updateCurrentUser(prev => {
+        const nextGc = Math.round(prev.gcBalance + winPayout);
+        setGcBalance(nextGc);
+        return {
+          ...prev,
+          gcBalance: nextGc,
+          totalWins: prev.totalWins + 1,
+          totalProfitGC: prev.totalProfitGC + winPayout,
+        };
+      });
     } else {
-      const nextSc = scBalance + payout;
-      setScBalance(nextSc);
-      updateCurrentUser(prev => ({
-        ...prev,
-        scBalance: nextSc,
-        totalWins: prev.totalWins + 1,
-        totalProfitSC: prev.totalProfitSC + payout,
-      }));
+      const winPayout = parseFloat(payout.toFixed(2));
+      updateCurrentUser(prev => {
+        const nextSc = parseFloat((prev.scBalance + winPayout).toFixed(2));
+        setScBalance(nextSc);
+        return {
+          ...prev,
+          scBalance: nextSc,
+          totalWins: prev.totalWins + 1,
+          totalProfitSC: prev.totalProfitSC + winPayout,
+        };
+      });
     }
 
     // Add payout back to profit & increment wins
@@ -363,20 +369,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { gcClaimed: 0, scClaimed: 0, success: false };
     }
 
-    const nextGc = gcBalance + gcToClaim;
-    const nextSc = scBalance + scToClaim;
-    setGcBalance(nextGc);
-    setScBalance(nextSc);
-
-    updateCurrentUser(prev => ({
-      ...prev,
-      gcBalance: nextGc,
-      scBalance: nextSc,
-      unclaimedRakebackGC: 0,
-      unclaimedRakebackSC: 0,
-      totalRakebackClaimedGC: (prev.totalRakebackClaimedGC || 0) + gcToClaim,
-      totalRakebackClaimedSC: (prev.totalRakebackClaimedSC || 0) + scToClaim,
-    }));
+    updateCurrentUser(prev => {
+      const nextGc = Math.round(prev.gcBalance + gcToClaim);
+      const nextSc = parseFloat((prev.scBalance + scToClaim).toFixed(2));
+      setGcBalance(nextGc);
+      setScBalance(nextSc);
+      return {
+        ...prev,
+        gcBalance: nextGc,
+        scBalance: nextSc,
+        unclaimedRakebackGC: 0,
+        unclaimedRakebackSC: 0,
+        totalRakebackClaimedGC: (prev.totalRakebackClaimedGC || 0) + gcToClaim,
+        totalRakebackClaimedSC: (prev.totalRakebackClaimedSC || 0) + scToClaim,
+      };
+    });
 
     sound.playWin();
     return { gcClaimed: gcToClaim, scClaimed: scToClaim, success: true };

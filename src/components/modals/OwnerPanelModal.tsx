@@ -156,7 +156,9 @@ export const OwnerPanelModal: React.FC = () => {
     if (absSc > 0) parts.push(`$${absSc.toFixed(2)} SC`);
     const formatted = parts.join(' & ') || '$0.00 SC';
 
-    if (grantTargetMode === 'self') {
+    const isTargetSelf = grantTargetMode === 'self' || targetUser?.id === currentUser?.id || (currentUser && (targetQuery.trim().toLowerCase() === currentUser.username.toLowerCase() || targetQuery.trim() === currentUser.uid));
+
+    if (isTargetSelf) {
       injectCoins(gc, sc);
       showToast(`${isDeduct ? 'Deducted' : 'Granted'} ${isDeduct ? '-' : '+'}${formatted} ${isDeduct ? 'from' : 'to'} active user!`);
     } else {
@@ -178,6 +180,7 @@ export const OwnerPanelModal: React.FC = () => {
     if (e) e.preventDefault();
 
     const recipient = targetUser || (grantTargetMode === 'self' ? currentUser : null);
+    const isTargetSelf = grantTargetMode === 'self' || recipient?.id === currentUser?.id || (currentUser && (targetQuery.trim().toLowerCase() === currentUser.username.toLowerCase() || targetQuery.trim() === currentUser.uid));
 
     if (grantTargetMode === 'other' && !targetQuery.trim()) {
       showToast('Please enter a target Username or UID first.');
@@ -199,7 +202,7 @@ export const OwnerPanelModal: React.FC = () => {
       } else if (grantOp === 'deduct') {
         handleGrantFunds(-gc, -sc);
       } else {
-        if (grantTargetMode === 'self') {
+        if (isTargetSelf) {
           setExactBalances(gc, sc);
           showToast(`Active balance set to ${gc.toLocaleString()} GC & $${sc.toFixed(2)} SC!`);
         } else {
@@ -229,7 +232,7 @@ export const OwnerPanelModal: React.FC = () => {
         handleGrantFunds(0, -val);
       } else {
         const curGc = recipient ? recipient.gcBalance : gcBalance;
-        if (grantTargetMode === 'self') {
+        if (isTargetSelf) {
           setExactBalances(curGc, val);
           showToast(`Active SC balance set to $${val.toFixed(2)} SC!`);
         } else {
@@ -252,7 +255,7 @@ export const OwnerPanelModal: React.FC = () => {
         handleGrantFunds(-roundedGc, 0);
       } else {
         const curSc = recipient ? recipient.scBalance : scBalance;
-        if (grantTargetMode === 'self') {
+        if (isTargetSelf) {
           setExactBalances(roundedGc, curSc);
           showToast(`Active GC balance set to ${roundedGc.toLocaleString()} GC!`);
         } else {

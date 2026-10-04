@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   type UserAccount,
   type VipInfo,
@@ -11,6 +11,7 @@ import {
   authenticateCloudUser,
   fetchAndMergeCloudUsers,
   updateLocalUser,
+  updateLocalUserWithoutSync,
   deleteLocalUser,
   dbRowToUser,
   getVipInfo,
@@ -47,6 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('register');
   const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const lastLocalUpdateTimestampRef = useRef<number>(0);
 
   // Initial load and Realtime cross-device subscription
   useEffect(() => {
@@ -85,11 +87,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         payload => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const updatedUser = dbRowToUser(payload.new);
-            updateLocalUser(updatedUser);
+            // Save to local storage without re-triggering another upsert (breaks echo loop)
+            updateLocalUserWithoutSync(updatedUser);
             setAllUsers(getLocalUsers());
+
             const currentActiveId = getActiveUserId();
             if (currentActiveId === updatedUser.id) {
-              setCurrentUser(updatedUser);
+              // If local action occurred within the last 3.5 seconds, this is an echo of our own action
+              // or in-flight bet/win: DO NOT overwrite active session!
+              const timeSinceLocalAction = Date.now() - lastLocalUpdateTimestampRef.current;
+              if (timeSinceLocalAction > 3500) {
+                setCurrentUser(updatedUser);
+              }
             }
           } else if (payload.eventType === 'DELETE') {
             if (payload.old && payload.old.id) {
@@ -184,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const updateCurrentUser = useCallback((updater: (prev: UserAccount) => UserAccount) => {
+    lastLocalUpdateTimestampRef.current = Date.now();
     setCurrentUser(prev => {
       if (!prev) return null;
       const updated = updater(prev);
