@@ -4,13 +4,18 @@ import {
   type VipInfo,
   getLocalUsers,
   getActiveUser,
+  getActiveUserId,
   setActiveUserId,
   createLocalUser,
   authenticateLocalUser,
+  authenticateCloudUser,
+  fetchAndMergeCloudUsers,
   updateLocalUser,
   deleteLocalUser,
+  dbRowToUser,
   getVipInfo,
 } from '../utils/userStorage';
+import { supabase } from '../utils/supabaseClient';
 
 interface AuthContextType {
   currentUser: UserAccount | null;
@@ -25,7 +30,7 @@ interface AuthContextType {
   closeAuthModal: () => void;
   setAuthModalMode: (mode: 'login' | 'register') => void;
   register: (username: string, email: string, password: string, avatarColor?: string) => { success: boolean; error?: string };
-  login: (usernameOrEmail: string, password: string) => { success: boolean; error?: string };
+  login: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchAccount: (userId: string) => void;
   deleteAccount: (userId: string) => void;
@@ -43,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authPromptReason, setAuthPromptReason] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
-  // If there are no users at all, automatically prompt registration on first visit
+  // Initial load and Realtime cross-device subscription
   useEffect(() => {
     const users = getLocalUsers();
     setAllUsers(users);
@@ -54,13 +59,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (users.length === 0) {
         setIsAuthModalOpen(true);
         setAuthModalMode('register');
-        setAuthPromptReason('Welcome to Stake.us Remake! Create your local account to start playing with 1,000 GC and $250.00 SC.');
+        setAuthPromptReason('Welcome to Stake.us Remake! Create your account to start playing with 1,000 GC and $250.00 SC.');
       } else {
         setIsAuthModalOpen(true);
         setAuthModalMode('login');
-        setAuthPromptReason('Please sign in or select your local account before playing.');
+        setAuthPromptReason('Please sign in or select your account before playing.');
       }
     }
+
+    // Background Cloud Sync on boot
+    fetchAndMergeCloudUsers().then(merged => {
+      setAllUsers(merged);
+      const updatedActive = getActiveUser();
+      if (updatedActive) {
+        setCurrentUser(updatedActive);
+      }
+    });
+
+    // Supabase Realtime WebSocket subscription for live multi-device updates
+    const channel = supabase
+      .channel('stake_users_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        payload => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const updatedUser = dbRowToUser(payload.new);
+            updateLocalUser(updatedUser);
+            setAllUsers(getLocalUsers());
+            const currentActiveId = getActiveUserId();
+            if (currentActiveId === updatedUser.id) {
+              setCurrentUser(updatedUser);
+            }
+          } else if (payload.eventType === 'DELETE') {
+            if (payload.old && payload.old.id) {
+              deleteLocalUser(payload.old.id);
+              setAllUsers(getLocalUsers());
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const openAuthModal = useCallback((mode: 'login' | 'register' = 'register', reason?: string) => {
@@ -86,7 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: res.error };
   }, []);
 
-  const login = useCallback((usernameOrEmail: string, password: string) => {
+  const login = useCallback(async (usernameOrEmail: string, password: string) => {
+    // 1. Try local storage cache
     const res = authenticateLocalUser(usernameOrEmail, password);
     if (res.success && res.user) {
       setCurrentUser(res.user);
@@ -95,7 +139,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthPromptReason(null);
       return { success: true };
     }
-    return { success: false, error: res.error };
+
+    // 2. Fall back to direct Supabase cloud query for new devices
+    const cloudRes = await authenticateCloudUser(usernameOrEmail, password);
+    if (cloudRes.success && cloudRes.user) {
+      setCurrentUser(cloudRes.user);
+      setAllUsers(getLocalUsers());
+      setIsAuthModalOpen(false);
+      setAuthPromptReason(null);
+      return { success: true };
+    }
+
+    return { success: false, error: cloudRes.error || res.error };
   }, []);
 
   const logout = useCallback(() => {
@@ -141,6 +196,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshUsers = useCallback(() => {
     setAllUsers(getLocalUsers());
     setCurrentUser(getActiveUser());
+    fetchAndMergeCloudUsers().then(merged => {
+      setAllUsers(merged);
+      setCurrentUser(getActiveUser());
+    });
   }, []);
 
   const vipInfo = currentUser ? getVipInfo(currentUser) : null;

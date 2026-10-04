@@ -73,11 +73,11 @@ export const AuthModal: React.FC = () => {
     setSuccessMsg('Account created successfully! Welcome to Stake.us Remake.');
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const res = login(username, password);
+    const res = await login(username, password);
     if (!res.success) {
       setError(res.error || 'Failed to sign in.');
       return;

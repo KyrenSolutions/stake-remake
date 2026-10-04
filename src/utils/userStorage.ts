@@ -1,4 +1,5 @@
 import CryptoJS from 'crypto-js';
+import { supabase } from './supabaseClient';
 
 export type VipTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond';
 
@@ -300,6 +301,7 @@ export function createLocalUser(
   const updatedList = [...existingUsers, newUser];
   saveLocalUsers(updatedList);
   setActiveUserId(newUser.id);
+  syncUserToCloud(newUser);
 
   return { success: true, user: newUser };
 }
@@ -344,6 +346,7 @@ export function updateLocalUser(updatedUser: UserAccount): void {
   if (index !== -1) {
     users[index] = updatedUser;
     saveLocalUsers(users);
+    syncUserToCloud(updatedUser);
   }
 }
 
@@ -352,6 +355,7 @@ export function deleteLocalUser(userId: string): void {
   const users = getLocalUsers();
   const filtered = users.filter(u => u.id !== userId);
   saveLocalUsers(filtered);
+  deleteUserFromCloud(userId);
 
   if (getActiveUserId() === userId) {
     const nextUser = filtered.length > 0 ? filtered[0].id : null;
@@ -383,6 +387,7 @@ export function grantFundsToUser(
   target.gcBalance = Math.max(0, target.gcBalance + gcDelta);
   target.scBalance = Math.max(0, parseFloat((target.scBalance + scDelta).toFixed(2)));
   saveLocalUsers(users);
+  syncUserToCloud(target);
 
   return { success: true, user: target };
 }
@@ -403,6 +408,7 @@ export function setExactUserBalances(
   target.gcBalance = Math.max(0, gc);
   target.scBalance = Math.max(0, parseFloat(sc.toFixed(2)));
   saveLocalUsers(users);
+  syncUserToCloud(target);
 
   return { success: true, user: target };
 }
@@ -431,6 +437,7 @@ export function setUserVipTier(
   target.totalWageredSC = targetSC;
   target.totalWageredGC = 0;
   saveLocalUsers(users);
+  syncUserToCloud(target);
 
   return { success: true, user: target };
 }
@@ -465,9 +472,164 @@ export function importUsersJson(jsonStr: string): { success: boolean; count?: nu
   }
 }
 
-// Reset / wipe all accounts from local storage
-export function wipeAllUsers(): void {
+// Reset / wipe all accounts from local storage and cloud
+export async function wipeAllUsers(): Promise<void> {
   localStorage.removeItem(STORAGE_USERS_KEY);
   localStorage.removeItem(STORAGE_ACTIVE_USER_KEY);
+  try {
+    await supabase.from('users').delete().neq('id', 'placeholder');
+  } catch {
+    // Non-blocking
+  }
 }
+
+// Map UserAccount to Database row format
+export function userToDbRow(u: UserAccount) {
+  return {
+    id: u.id,
+    uid: u.uid,
+    username: u.username,
+    email: u.email || null,
+    password_hash: u.passwordHash,
+    avatar_color: u.avatarColor || '#1475e1',
+    gc_balance: u.gcBalance,
+    sc_balance: u.scBalance,
+    total_wagered_gc: u.totalWageredGC,
+    total_wagered_sc: u.totalWageredSC,
+    total_profit_gc: u.totalProfitGC,
+    total_profit_sc: u.totalProfitSC,
+    total_wins: u.totalWins,
+    total_losses: u.totalLosses,
+    unclaimed_rakeback_gc: u.unclaimedRakebackGC || 0,
+    unclaimed_rakeback_sc: u.unclaimedRakebackSC || 0,
+    total_rakeback_claimed_gc: u.totalRakebackClaimedGC || 0,
+    total_rakeback_claimed_sc: u.totalRakebackClaimedSC || 0,
+    created_at: u.createdAt,
+  };
+}
+
+// Map Database row format to UserAccount
+export function dbRowToUser(row: any): UserAccount {
+  return {
+    id: row.id,
+    uid: row.uid,
+    username: row.username,
+    email: row.email || `${row.username.toLowerCase()}@local.stake`,
+    passwordHash: row.password_hash,
+    avatarColor: row.avatar_color || '#1475e1',
+    createdAt: Number(row.created_at) || Date.now(),
+    gcBalance: Number(row.gc_balance) || 0,
+    scBalance: Number(row.sc_balance) || 0,
+    totalWageredGC: Number(row.total_wagered_gc) || 0,
+    totalWageredSC: Number(row.total_wagered_sc) || 0,
+    totalProfitGC: Number(row.total_profit_gc) || 0,
+    totalProfitSC: Number(row.total_profit_sc) || 0,
+    totalWins: Number(row.total_wins) || 0,
+    totalLosses: Number(row.total_losses) || 0,
+    unclaimedRakebackGC: Number(row.unclaimed_rakeback_gc) || 0,
+    unclaimedRakebackSC: Number(row.unclaimed_rakeback_sc) || 0,
+    totalRakebackClaimedGC: Number(row.total_rakeback_claimed_gc) || 0,
+    totalRakebackClaimedSC: Number(row.total_rakeback_claimed_sc) || 0,
+  };
+}
+
+// Asynchronously push user to Supabase
+export async function syncUserToCloud(user: UserAccount): Promise<void> {
+  try {
+    const row = userToDbRow(user);
+    const { error } = await supabase.from('users').upsert(row);
+    if (error && error.code !== 'PGRST205') {
+      console.warn('Supabase upsert warning:', error.message);
+    }
+  } catch {
+    // Non-blocking: local storage is already updated
+  }
+}
+
+// Asynchronously delete user from Supabase
+export async function deleteUserFromCloud(userId: string): Promise<void> {
+  try {
+    await supabase.from('users').delete().eq('id', userId);
+  } catch {
+    // Non-blocking
+  }
+}
+
+// Fetch all cloud users from Supabase and merge with local storage
+export async function fetchAndMergeCloudUsers(): Promise<UserAccount[]> {
+  try {
+    const { data, error } = await supabase.from('users').select('*');
+    if (error) {
+      if (error.code !== 'PGRST205') {
+        console.warn('Supabase fetch error:', error.message);
+      }
+      return getLocalUsers();
+    }
+
+    if (!data || data.length === 0) {
+      // If cloud is empty but local has users, push local users up to cloud
+      const localUsers = getLocalUsers();
+      if (localUsers.length > 0) {
+        const rows = localUsers.map(userToDbRow);
+        await supabase.from('users').upsert(rows);
+      }
+      return localUsers;
+    }
+
+    const cloudUsers: UserAccount[] = data.map(dbRowToUser);
+    const localUsers = getLocalUsers();
+
+    // Merge: cloud accounts overwrite or add to local cache
+    const mergedMap = new Map<string, UserAccount>();
+    localUsers.forEach(u => mergedMap.set(u.id, u));
+    cloudUsers.forEach(u => mergedMap.set(u.id, u));
+
+    // Upload any local accounts missing in cloud
+    for (const u of localUsers) {
+      if (!cloudUsers.some(cu => cu.id === u.id)) {
+        await syncUserToCloud(u);
+      }
+    }
+
+    const merged = Array.from(mergedMap.values());
+    saveLocalUsers(merged);
+    return merged;
+  } catch {
+    return getLocalUsers();
+  }
+}
+
+// Direct cloud authentication for cross-device sign in
+export async function authenticateCloudUser(
+  usernameOrEmailOrUid: string,
+  password: string
+): Promise<{ success: boolean; user?: UserAccount; error?: string }> {
+  try {
+    const query = usernameOrEmailOrUid.trim().toLowerCase();
+    const inputHash = hashPassword(password);
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .or(`username.ilike.${query},email.ilike.${query},uid.eq.${query}`)
+      .limit(1);
+
+    if (error || !data || data.length === 0) {
+      return { success: false, error: 'Account not found in cloud database.' };
+    }
+
+    const cloudUser = dbRowToUser(data[0]);
+    if (cloudUser.passwordHash !== inputHash) {
+      return { success: false, error: 'Incorrect password.' };
+    }
+
+    // Cache locally
+    updateLocalUser(cloudUser);
+    setActiveUserId(cloudUser.id);
+    return { success: true, user: cloudUser };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Cloud authentication failed.' };
+  }
+}
+
 
