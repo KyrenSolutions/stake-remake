@@ -34,7 +34,11 @@ import {
   Plus, 
   AlertTriangle,
   Flame,
-  ArrowRight
+  ArrowRight,
+  DollarSign,
+  Minus,
+  Equal,
+  Wallet
 } from 'lucide-react';
 
 type TabId = 'rigging' | 'grants' | 'database' | 'broadcast' | 'streamer';
@@ -84,10 +88,11 @@ export const OwnerPanelModal: React.FC = () => {
   // Grants Tab State
   const [grantTargetMode, setGrantTargetMode] = useState<'self' | 'other'>('self');
   const [targetQuery, setTargetQuery] = useState<string>('');
+  const [grantCurrency, setGrantCurrency] = useState<'SC' | 'GC' | 'BOTH'>('SC');
+  const [grantOp, setGrantOp] = useState<'add' | 'deduct' | 'exact'>('add');
+  const [customSingleAmount, setCustomSingleAmount] = useState<string>('500');
   const [customGcInput, setCustomGcInput] = useState<string>('100000');
   const [customScInput, setCustomScInput] = useState<string>('500');
-  const [exactGcInput, setExactGcInput] = useState<string>(gcBalance.toString());
-  const [exactScInput, setExactScInput] = useState<string>(scBalance.toString());
 
   // Database Tab State
   const [dbSearch, setDbSearch] = useState<string>('');
@@ -142,9 +147,18 @@ export const OwnerPanelModal: React.FC = () => {
 
   // Handle Grants
   const handleGrantFunds = (gc: number, sc: number) => {
+    const isDeduct = gc < 0 || sc < 0;
+    const absGc = Math.abs(gc);
+    const absSc = Math.abs(sc);
+
+    const parts: string[] = [];
+    if (absGc > 0) parts.push(`${absGc.toLocaleString()} GC`);
+    if (absSc > 0) parts.push(`$${absSc.toFixed(2)} SC`);
+    const formatted = parts.join(' & ') || '$0.00 SC';
+
     if (grantTargetMode === 'self') {
       injectCoins(gc, sc);
-      showToast(`Granted +${gc.toLocaleString()} GC & +$${sc.toFixed(2)} SC to active user!`);
+      showToast(`${isDeduct ? 'Deducted' : 'Granted'} ${isDeduct ? '-' : '+'}${formatted} ${isDeduct ? 'from' : 'to'} active user!`);
     } else {
       if (!targetQuery.trim()) {
         showToast('Please enter a target Username or UID first.');
@@ -152,31 +166,103 @@ export const OwnerPanelModal: React.FC = () => {
       }
       const res = grantMoneyToTarget(targetQuery, gc, sc);
       if (res.success && res.user) {
-        showToast(`Granted +${gc.toLocaleString()} GC & +$${sc.toFixed(2)} SC to ${res.user.username} (UID: ${res.user.uid})!`);
+        showToast(`${isDeduct ? 'Deducted' : 'Granted'} ${isDeduct ? '-' : '+'}${formatted} ${isDeduct ? 'from' : 'to'} ${res.user.username} (UID: ${res.user.uid})!`);
       } else {
-        showToast(res.error || 'Failed to grant funds.');
+        showToast(res.error || 'Failed to update funds.');
       }
     }
   };
 
-  const handleSetExact = (e: React.FormEvent) => {
-    e.preventDefault();
-    const gc = Math.max(0, parseFloat(exactGcInput) || 0);
-    const sc = Math.max(0, parseFloat(exactScInput) || 0);
+  // Dedicated Custom Amount Granter Handler
+  const handleApplyCustomAmount = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
-    if (grantTargetMode === 'self') {
-      setExactBalances(gc, sc);
-      showToast(`Active balance set to ${gc.toLocaleString()} GC & $${sc.toFixed(2)} SC!`);
-    } else {
-      if (!targetQuery.trim()) {
-        showToast('Please enter a target Username or UID first.');
-        return;
-      }
-      const res = setTargetExactBalance(targetQuery, gc, sc);
-      if (res.success && res.user) {
-        showToast(`Set ${res.user.username}'s balance to ${gc.toLocaleString()} GC & $${sc.toFixed(2)} SC!`);
+    const recipient = targetUser || (grantTargetMode === 'self' ? currentUser : null);
+
+    if (grantTargetMode === 'other' && !targetQuery.trim()) {
+      showToast('Please enter a target Username or UID first.');
+      return;
+    }
+    if (grantTargetMode === 'other' && !recipient) {
+      showToast(`User "${targetQuery}" not found in database.`);
+      return;
+    }
+
+    if (grantCurrency === 'BOTH') {
+      const gc = parseFloat(customGcInput) || 0;
+      const sc = parseFloat(customScInput) || 0;
+
+      if (grantOp === 'add') {
+        handleGrantFunds(gc, sc);
+        triggerCoinRain();
+        sound.playWin();
+      } else if (grantOp === 'deduct') {
+        handleGrantFunds(-gc, -sc);
       } else {
-        showToast(res.error || 'Failed to set exact balance.');
+        if (grantTargetMode === 'self') {
+          setExactBalances(gc, sc);
+          showToast(`Active balance set to ${gc.toLocaleString()} GC & $${sc.toFixed(2)} SC!`);
+        } else {
+          const res = setTargetExactBalance(targetQuery, gc, sc);
+          if (res.success && res.user) {
+            showToast(`Set ${res.user.username}'s balance to ${gc.toLocaleString()} GC & $${sc.toFixed(2)} SC!`);
+          } else {
+            showToast(res.error || 'Failed to set exact balance.');
+          }
+        }
+      }
+      return;
+    }
+
+    const val = parseFloat(customSingleAmount);
+    if (isNaN(val) || val < 0) {
+      showToast('Please enter a valid amount (0 or higher).');
+      return;
+    }
+
+    if (grantCurrency === 'SC') {
+      if (grantOp === 'add') {
+        handleGrantFunds(0, val);
+        triggerCoinRain();
+        sound.playWin();
+      } else if (grantOp === 'deduct') {
+        handleGrantFunds(0, -val);
+      } else {
+        const curGc = recipient ? recipient.gcBalance : gcBalance;
+        if (grantTargetMode === 'self') {
+          setExactBalances(curGc, val);
+          showToast(`Active SC balance set to $${val.toFixed(2)} SC!`);
+        } else {
+          const res = setTargetExactBalance(targetQuery, curGc, val);
+          if (res.success && res.user) {
+            showToast(`Set ${res.user.username}'s SC balance to $${val.toFixed(2)} SC!`);
+          } else {
+            showToast(res.error || 'Failed to set exact balance.');
+          }
+        }
+      }
+    } else {
+      // GC
+      const roundedGc = Math.round(val);
+      if (grantOp === 'add') {
+        handleGrantFunds(roundedGc, 0);
+        triggerCoinRain();
+        sound.playWin();
+      } else if (grantOp === 'deduct') {
+        handleGrantFunds(-roundedGc, 0);
+      } else {
+        const curSc = recipient ? recipient.scBalance : scBalance;
+        if (grantTargetMode === 'self') {
+          setExactBalances(roundedGc, curSc);
+          showToast(`Active GC balance set to ${roundedGc.toLocaleString()} GC!`);
+        } else {
+          const res = setTargetExactBalance(targetQuery, roundedGc, curSc);
+          if (res.success && res.user) {
+            showToast(`Set ${res.user.username}'s GC balance to ${roundedGc.toLocaleString()} GC!`);
+          } else {
+            showToast(res.error || 'Failed to set exact balance.');
+          }
+        }
       }
     }
   };
@@ -470,10 +556,456 @@ export const OwnerPanelModal: React.FC = () => {
                 ) : null}
               </div>
 
-              {/* Instant Injections */}
+              {/* ======================================================== */}
+              {/* DEDICATED CUSTOM AMOUNT GRANTER                          */}
+              {/* ======================================================== */}
+              <div className="bg-gradient-to-br from-[#0f212e] via-[#142634] to-[#0f212e] p-4 sm:p-5 rounded-2xl border-2 border-[#00e701]/40 shadow-xl space-y-4 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-[#00e701]/5 rounded-full blur-2xl pointer-events-none" />
+
+                {/* Header with Title and Mode Badges */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-[#213743] pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-[#00e701]/15 border border-[#00e701]/30 flex items-center justify-center text-[#00e701] shadow">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-white text-sm flex items-center gap-2">
+                        <span>Custom Amount Granter</span>
+                        <span className="text-[10px] font-mono font-bold bg-[#00e701]/20 text-[#00e701] px-2 py-0.5 rounded border border-[#00e701]/40">
+                          INSTANT SYNC
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-[#87909c]">
+                        Inject, deduct, or overwrite exact balances for{' '}
+                        <span className="text-white font-bold">
+                          {targetUser ? targetUser.username : (grantTargetMode === 'self' ? (currentUser?.username || 'Myself') : targetQuery || 'selected player')}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Operation Mode: Add vs Deduct vs Set Exact */}
+                  <div className="flex items-center bg-[#0b1822] p-1 rounded-xl border border-[#213743]">
+                    <button
+                      type="button"
+                      onClick={() => setGrantOp('add')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition cursor-pointer ${
+                        grantOp === 'add'
+                          ? 'bg-[#00e701] text-black shadow-md'
+                          : 'text-[#87909c] hover:text-white'
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Add</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGrantOp('deduct')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition cursor-pointer ${
+                        grantOp === 'deduct'
+                          ? 'bg-red-500 text-white shadow-md'
+                          : 'text-[#87909c] hover:text-white'
+                      }`}
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                      <span>- Deduct</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGrantOp('exact')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition cursor-pointer ${
+                        grantOp === 'exact'
+                          ? 'bg-blue-500 text-white shadow-md'
+                          : 'text-[#87909c] hover:text-white'
+                      }`}
+                    >
+                      <Equal className="w-3.5 h-3.5" />
+                      <span>= Set Exact</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Currency Tabs */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-extrabold uppercase text-[#87909c]">Currency:</span>
+                  <div className="flex items-center gap-1 bg-[#1a2c38] p-1 rounded-xl border border-[#213743]">
+                    <button
+                      type="button"
+                      onClick={() => setGrantCurrency('SC')}
+                      className={`px-3 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer ${
+                        grantCurrency === 'SC'
+                          ? 'bg-[#00e701]/20 text-[#00e701] border border-[#00e701]/50'
+                          : 'text-[#87909c] hover:text-white'
+                      }`}
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                      <span>Stake Cash (SC)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGrantCurrency('GC')}
+                      className={`px-3 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer ${
+                        grantCurrency === 'GC'
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
+                          : 'text-[#87909c] hover:text-white'
+                      }`}
+                    >
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>Gold Coins (GC)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGrantCurrency('BOTH')}
+                      className={`px-3 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer ${
+                        grantCurrency === 'BOTH'
+                          ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50'
+                          : 'text-[#87909c] hover:text-white'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Both (Bundle)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Main Input Form & Presets */}
+                {grantCurrency !== 'BOTH' ? (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[10px] font-extrabold uppercase text-[#87909c] flex items-center gap-1">
+                          {grantCurrency === 'SC' ? <DollarSign className="w-3 h-3 text-[#00e701]" /> : <Coins className="w-3 h-3 text-amber-400" />}
+                          <span>
+                            {grantOp === 'add'
+                              ? `Amount to Add (${grantCurrency})`
+                              : grantOp === 'deduct'
+                              ? `Amount to Deduct (${grantCurrency})`
+                              : `Exact Target Balance (${grantCurrency})`}
+                          </span>
+                        </label>
+                        <span className="text-[10px] text-[#87909c] font-mono">
+                          Current:{' '}
+                          <span className={grantCurrency === 'SC' ? 'text-[#00e701] font-bold' : 'text-amber-400 font-bold'}>
+                            {grantCurrency === 'SC'
+                              ? `$${(targetUser ? targetUser.scBalance : scBalance).toFixed(2)} SC`
+                              : `${(targetUser ? targetUser.gcBalance : gcBalance).toLocaleString()} GC`}
+                          </span>
+                        </span>
+                      </div>
+
+                      <div className="relative">
+                        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono font-black text-sm text-[#87909c]">
+                          {grantCurrency === 'SC' ? '$' : '🪙'}
+                        </div>
+                        <input
+                          type="number"
+                          step={grantCurrency === 'SC' ? '0.01' : '1'}
+                          min="0"
+                          value={customSingleAmount}
+                          onChange={e => setCustomSingleAmount(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleApplyCustomAmount();
+                            }
+                          }}
+                          placeholder={`Enter custom ${grantCurrency} amount...`}
+                          className="w-full bg-[#0b1822] border-2 border-[#213743] focus:border-[#00e701] rounded-xl pl-9 pr-16 py-3 text-white font-mono font-black text-base outline-none transition shadow-inner"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomSingleAmount('0')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#87909c] hover:text-white px-2 py-1 rounded bg-[#1a2c38] hover:bg-[#213743] transition cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Presets & Math Modifiers */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold uppercase text-[#87909c]">Quick Presets</span>
+                        <div className="flex items-center gap-1 font-mono text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curr = parseFloat(customSingleAmount) || 0;
+                              setCustomSingleAmount(Math.max(0, parseFloat((curr / 2).toFixed(2))).toString());
+                            }}
+                            className="bg-[#1a2c38] hover:bg-[#213743] text-[#b1bad2] px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                            title="Half amount"
+                          >
+                            ½
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curr = parseFloat(customSingleAmount) || 0;
+                              setCustomSingleAmount(Math.max(0, parseFloat((curr * 2).toFixed(2))).toString());
+                            }}
+                            className="bg-[#1a2c38] hover:bg-[#213743] text-[#b1bad2] px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                            title="Double amount"
+                          >
+                            2x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curr = parseFloat(customSingleAmount) || 0;
+                              setCustomSingleAmount(Math.max(0, parseFloat((curr * 10).toFixed(2))).toString());
+                            }}
+                            className="bg-[#1a2c38] hover:bg-[#213743] text-[#b1bad2] px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                            title="10x amount"
+                          >
+                            10x
+                          </button>
+                          {grantCurrency === 'SC' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const curr = parseFloat(customSingleAmount) || 0;
+                                  setCustomSingleAmount((curr + 100).toString());
+                                }}
+                                className="bg-[#1a2c38] hover:bg-[#213743] text-[#00e701] px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                              >
+                                +$100
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const curr = parseFloat(customSingleAmount) || 0;
+                                  setCustomSingleAmount((curr + 1000).toString());
+                                }}
+                                className="bg-[#1a2c38] hover:bg-[#213743] text-[#00e701] px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                              >
+                                +$1K
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const curr = parseFloat(customSingleAmount) || 0;
+                                  setCustomSingleAmount((curr + 100000).toString());
+                                }}
+                                className="bg-[#1a2c38] hover:bg-[#213743] text-amber-400 px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                              >
+                                +100K
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const curr = parseFloat(customSingleAmount) || 0;
+                                  setCustomSingleAmount((curr + 1000000).toString());
+                                }}
+                                className="bg-[#1a2c38] hover:bg-[#213743] text-amber-400 px-2 py-0.5 rounded font-bold border border-[#213743] transition cursor-pointer"
+                              >
+                                +1M
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Chip Row */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {grantCurrency === 'SC'
+                          ? [10, 50, 100, 500, 1000, 5000, 25000, 100000].map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => setCustomSingleAmount(val.toString())}
+                                className={`px-2.5 py-1.5 rounded-lg font-mono text-xs font-bold transition cursor-pointer border ${
+                                  customSingleAmount === val.toString()
+                                    ? 'bg-[#00e701] text-black border-[#00e701]'
+                                    : 'bg-[#1a2c38] text-[#b1bad2] hover:text-white border-[#213743] hover:border-[#00e701]/40'
+                                }`}
+                              >
+                                ${val.toLocaleString()}
+                              </button>
+                            ))
+                          : [10000, 50000, 100000, 500000, 1000000, 10000000, 50000000].map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => setCustomSingleAmount(val.toString())}
+                                className={`px-2.5 py-1.5 rounded-lg font-mono text-xs font-bold transition cursor-pointer border ${
+                                  customSingleAmount === val.toString()
+                                    ? 'bg-amber-400 text-black border-amber-400'
+                                    : 'bg-[#1a2c38] text-[#b1bad2] hover:text-white border-[#213743] hover:border-amber-400/40'
+                                }`}
+                              >
+                                {val >= 1000000 ? `${val / 1000000}M` : `${val / 1000}K`} GC
+                              </button>
+                            ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Dual Currency Bundle Input */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-[#0b1822] p-3 rounded-xl border border-[#213743] space-y-2">
+                      <label className="text-[10px] font-extrabold uppercase text-amber-400 flex items-center gap-1">
+                        <Coins className="w-3 h-3" />
+                        <span>Gold Coins (GC)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={customGcInput}
+                        onChange={e => setCustomGcInput(e.target.value)}
+                        placeholder="e.g. 1000000"
+                        className="w-full bg-[#1a2c38] border border-[#213743] rounded-lg px-3 py-2 text-white font-mono font-black text-sm outline-none focus:border-amber-400"
+                      />
+                      <div className="flex gap-1 flex-wrap">
+                        {[100000, 500000, 1000000, 10000000].map(v => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setCustomGcInput(v.toString())}
+                            className="text-[10px] font-mono bg-[#1a2c38] hover:bg-[#213743] text-amber-400 px-2 py-0.5 rounded border border-[#213743]"
+                          >
+                            +{v >= 1000000 ? `${v / 1000000}M` : `${v / 1000}K`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-[#0b1822] p-3 rounded-xl border border-[#213743] space-y-2">
+                      <label className="text-[10px] font-extrabold uppercase text-[#00e701] flex items-center gap-1">
+                        <DollarSign className="w-3 h-3" />
+                        <span>Stake Cash (SC)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={customScInput}
+                        onChange={e => setCustomScInput(e.target.value)}
+                        placeholder="e.g. 500"
+                        className="w-full bg-[#1a2c38] border border-[#213743] rounded-lg px-3 py-2 text-white font-mono font-black text-sm outline-none focus:border-[#00e701]"
+                      />
+                      <div className="flex gap-1 flex-wrap">
+                        {[100, 500, 1000, 5000].map(v => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setCustomScInput(v.toString())}
+                            className="text-[10px] font-mono bg-[#1a2c38] hover:bg-[#213743] text-[#00e701] px-2 py-0.5 rounded border border-[#213743]"
+                          >
+                            +${v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Projection / Preview Card */}
+                {(() => {
+                  const recipient = targetUser || (grantTargetMode === 'self' ? currentUser : null);
+                  const curSc = recipient ? recipient.scBalance : scBalance;
+                  const curGc = recipient ? recipient.gcBalance : gcBalance;
+                  const parsedSingle = parseFloat(customSingleAmount) || 0;
+
+                  let newSc = curSc;
+                  let newGc = curGc;
+
+                  if (grantCurrency === 'SC') {
+                    if (grantOp === 'add') newSc = curSc + parsedSingle;
+                    else if (grantOp === 'deduct') newSc = Math.max(0, curSc - parsedSingle);
+                    else newSc = Math.max(0, parsedSingle);
+                  } else if (grantCurrency === 'GC') {
+                    if (grantOp === 'add') newGc = curGc + Math.round(parsedSingle);
+                    else if (grantOp === 'deduct') newGc = Math.max(0, curGc - Math.round(parsedSingle));
+                    else newGc = Math.max(0, Math.round(parsedSingle));
+                  } else {
+                    const g = parseFloat(customGcInput) || 0;
+                    const s = parseFloat(customScInput) || 0;
+                    if (grantOp === 'add') {
+                      newGc = curGc + g;
+                      newSc = curSc + s;
+                    } else if (grantOp === 'deduct') {
+                      newGc = Math.max(0, curGc - g);
+                      newSc = Math.max(0, curSc - s);
+                    } else {
+                      newGc = Math.max(0, g);
+                      newSc = Math.max(0, s);
+                    }
+                  }
+
+                  return (
+                    <div className="bg-[#0b1822] p-3 rounded-xl border border-[#213743] flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4 text-[#87909c]" />
+                        <span className="text-[#87909c] font-bold">Projected Balance:</span>
+                        <div className="flex items-center gap-3 font-mono font-bold">
+                          {grantCurrency !== 'GC' && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-[#87909c] line-through">${curSc.toFixed(2)}</span>
+                              <ArrowRight className="w-3 h-3 text-[#00e701]" />
+                              <span className="text-[#00e701] font-black">${newSc.toFixed(2)} SC</span>
+                            </span>
+                          )}
+                          {grantCurrency !== 'SC' && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-[#87909c] line-through">{curGc.toLocaleString()}</span>
+                              <ArrowRight className="w-3 h-3 text-amber-400" />
+                              <span className="text-amber-400 font-black">{newGc.toLocaleString()} GC</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] font-bold text-[#87909c] uppercase font-mono">
+                        Target: {recipient ? recipient.username : (grantTargetMode === 'self' ? 'Myself' : targetQuery || 'None')}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Big Dynamic Execution CTA Button */}
+                <button
+                  type="button"
+                  onClick={() => handleApplyCustomAmount()}
+                  className={`w-full py-3.5 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.99] ${
+                    grantOp === 'add'
+                      ? 'bg-gradient-to-r from-emerald-500 via-[#00e701] to-emerald-400 hover:brightness-110 text-black shadow-emerald-500/20'
+                      : grantOp === 'deduct'
+                      ? 'bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:brightness-110 text-white shadow-red-500/20'
+                      : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:brightness-110 text-white shadow-blue-500/20'
+                  }`}
+                >
+                  <Zap className="w-4 h-4 fill-current" />
+                  <span>
+                    {(() => {
+                      const name = targetUser ? targetUser.username : (grantTargetMode === 'self' ? 'Myself' : targetQuery || 'Player');
+                      if (grantCurrency === 'BOTH') {
+                        const gc = parseFloat(customGcInput) || 0;
+                        const sc = parseFloat(customScInput) || 0;
+                        if (grantOp === 'add') return `Grant +${gc.toLocaleString()} GC & +$${sc.toFixed(2)} SC to ${name} (Instant)`;
+                        if (grantOp === 'deduct') return `Deduct -${gc.toLocaleString()} GC & -$${sc.toFixed(2)} SC from ${name}`;
+                        return `Set Exact Balances to ${gc.toLocaleString()} GC & $${sc.toFixed(2)} SC for ${name}`;
+                      }
+
+                      const val = parseFloat(customSingleAmount) || 0;
+                      const formatted = grantCurrency === 'SC' ? `$${val.toFixed(2)} SC` : `${Math.round(val).toLocaleString()} GC`;
+
+                      if (grantOp === 'add') return `Grant +${formatted} to ${name} (Instant)`;
+                      if (grantOp === 'deduct') return `Deduct -${formatted} from ${name} (Instant)`;
+                      return `Set Exact Balance to ${formatted} for ${name}`;
+                    })()}
+                  </span>
+                </button>
+              </div>
+
+              {/* Instant Injections (Quick Presets) */}
               <div className="bg-[#0f212e] p-4 rounded-xl border border-[#213743] space-y-3">
                 <span className="text-[10px] font-extrabold uppercase text-[#87909c] block">
-                  Instant Fund Grants {targetUser ? `to ${targetUser.username}` : ''}
+                  Instant 1-Click Grants {targetUser ? `to ${targetUser.username}` : ''}
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
@@ -509,79 +1041,6 @@ export const OwnerPanelModal: React.FC = () => {
                   </button>
                 </div>
               </div>
-
-              {/* Custom Delta Grant Form */}
-              <div className="bg-[#0f212e] p-4 rounded-xl border border-[#213743] space-y-3">
-                <span className="text-[10px] font-extrabold uppercase text-[#87909c] block">
-                  Custom Delta Grant (+/- Any Amount)
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase text-[#87909c] block mb-1">GC Delta</label>
-                    <input
-                      type="number"
-                      value={customGcInput}
-                      onChange={e => setCustomGcInput(e.target.value)}
-                      className="w-full bg-[#1a2c38] border border-[#213743] rounded-lg px-3 py-2 text-white font-mono font-bold outline-none focus:border-[#00e701]"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase text-[#87909c] block mb-1">SC Delta ($)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={customScInput}
-                      onChange={e => setCustomScInput(e.target.value)}
-                      className="w-full bg-[#1a2c38] border border-[#213743] rounded-lg px-3 py-2 text-white font-mono font-bold outline-none focus:border-[#00e701]"
-                    />
-                  </div>
-                  <button
-                    onClick={() => {
-                      const gc = parseFloat(customGcInput) || 0;
-                      const sc = parseFloat(customScInput) || 0;
-                      handleGrantFunds(gc, sc);
-                    }}
-                    className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-2 px-4 rounded-lg transition cursor-pointer h-9 text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Apply Grant</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Exact Balance Form */}
-              <form onSubmit={handleSetExact} className="bg-[#0f212e] p-4 rounded-xl border border-[#213743] space-y-3">
-                <span className="text-[10px] font-extrabold uppercase text-[#87909c] block">
-                  Set Exact Balance (Overwrite Total)
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase text-[#87909c] block mb-1">Exact GC Balance</label>
-                    <input
-                      type="number"
-                      value={exactGcInput}
-                      onChange={e => setExactGcInput(e.target.value)}
-                      className="w-full bg-[#1a2c38] border border-[#213743] rounded-lg px-3 py-2 text-white font-mono font-bold outline-none focus:border-[#00e701]"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase text-[#87909c] block mb-1">Exact SC Balance ($)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={exactScInput}
-                      onChange={e => setExactScInput(e.target.value)}
-                      className="w-full bg-[#1a2c38] border border-[#213743] rounded-lg px-3 py-2 text-white font-mono font-bold outline-none focus:border-[#00e701]"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="bg-[#00e701] hover:bg-[#1fff20] text-black font-extrabold py-2 px-4 rounded-lg transition cursor-pointer h-9 text-xs"
-                  >
-                    Set Balances
-                  </button>
-                </div>
-              </form>
 
               {/* VIP Tier Override */}
               <div className="bg-[#0f212e] p-4 rounded-xl border border-[#213743] space-y-3">

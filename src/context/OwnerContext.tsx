@@ -251,8 +251,8 @@ export const OwnerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!currentUser) return;
     updateCurrentUser(prev => ({
       ...prev,
-      gcBalance: prev.gcBalance + gc,
-      scBalance: prev.scBalance + sc,
+      gcBalance: Math.max(0, Math.round(prev.gcBalance + gc)),
+      scBalance: Math.max(0, parseFloat((prev.scBalance + sc).toFixed(2))),
     }));
   }, [currentUser, updateCurrentUser]);
 
