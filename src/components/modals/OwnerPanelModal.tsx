@@ -69,7 +69,7 @@ export const OwnerPanelModal: React.FC = () => {
     gcBalance,
     scBalance,
     broadcastFeedBet,
-    addChatMessage,
+    sendRealtimeChatMessage,
     chatBotsEnabled,
     setChatBotsEnabled,
     sessionStats,
@@ -204,7 +204,7 @@ export const OwnerPanelModal: React.FC = () => {
     e.preventDefault();
     if (!broadcastText.trim()) return;
 
-    addChatMessage({
+    sendRealtimeChatMessage({
       id: `msg_admin_${Date.now()}`,
       user: broadcastRole === 'admin' ? 'Owner / Admin' : 'Stake System',
       text: broadcastText.trim(),

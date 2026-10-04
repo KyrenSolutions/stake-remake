@@ -5,12 +5,12 @@ import { useGame, type ChatMessage } from '../../context/GameContext';
 
 export const LiveChat: React.FC = () => {
   const { currentUser, vipInfo, openAuthModal } = useAuth();
-  const { chatMessages, addChatMessage, chatBotsEnabled } = useGame();
+  const { chatMessages, sendRealtimeChatMessage, onlinePlayersCount, chatBotsEnabled, addChatMessage } = useGame();
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [input, setInput] = useState<string>('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Simulate incoming bot messages periodically for lively chat feel (if enabled)
+  // Optional bot traffic simulation (strictly opt-in via Owner Panel)
   useEffect(() => {
     if (!chatBotsEnabled) return;
 
@@ -35,7 +35,7 @@ export const LiveChat: React.FC = () => {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       addChatMessage(newMsg);
-    }, 9000);
+    }, 12000);
 
     return () => clearInterval(interval);
   }, [chatBotsEnabled, addChatMessage]);
@@ -54,14 +54,14 @@ export const LiveChat: React.FC = () => {
     }
 
     const myMsg: ChatMessage = {
-      id: Math.random().toString(36).substring(2),
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       user: currentUser.username,
       badge: vipInfo ? `VIP ${vipInfo.tier.toUpperCase()}` : 'VIP',
-      text: input,
+      text: input.trim(),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    addChatMessage(myMsg);
+    sendRealtimeChatMessage(myMsg);
     setInput('');
   };
 
@@ -86,9 +86,10 @@ export const LiveChat: React.FC = () => {
           <span>Community Chat</span>
         </div>
         <div className="flex items-center gap-2 text-[#87909c] text-xs font-semibold">
-          <span className="flex items-center gap-1 bg-[#0f212e] px-2 py-1 rounded-md text-[10px] text-[#00e701] font-mono border border-[#213743]">
+          <span className="flex items-center gap-1.5 bg-[#0f212e] px-2.5 py-1 rounded-md text-[10px] text-[#00e701] font-mono border border-[#213743]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00e701] animate-pulse"></span>
             <Users className="w-3 h-3 text-[#00e701]" />
-            1,429
+            <span>{onlinePlayersCount} Online</span>
           </span>
           <button 
             onClick={() => setIsOpen(false)}

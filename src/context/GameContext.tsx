@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { generateProvablyFairPair, type ProvablyFairState } from '../utils/provablyFair';
 import { sound } from '../utils/soundEngine';
 import { useAuth } from './AuthContext';
 import { getRakebackRate, getVipInfo } from '../utils/userStorage';
+import { initRealtimeChat, fetchHistoricalChatMessages } from '../utils/chatRealtime';
 
 export type Currency = 'GC' | 'SC';
 export type GameId = 
@@ -75,6 +76,8 @@ interface GameContextType {
   broadcastFeedBet: (bet: BetHistoryItem) => void;
   chatMessages: ChatMessage[];
   addChatMessage: (msg: ChatMessage) => void;
+  sendRealtimeChatMessage: (msg: ChatMessage) => void;
+  onlinePlayersCount: number;
   chatBotsEnabled: boolean;
   setChatBotsEnabled: (enabled: boolean) => void;
 }
@@ -137,21 +140,54 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setBetHistory(initialBots);
   }, []);
 
-  const [chatBotsEnabled, setChatBotsEnabled] = useState<boolean>(true);
+  const [chatBotsEnabled, setChatBotsEnabled] = useState<boolean>(false);
+  const [onlinePlayersCount, setOnlinePlayersCount] = useState<number>(1);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
-    { id: '1', user: 'VipHighRoller', badge: 'VIP PLAT', text: 'Mines 5 bombs paying crazy today 🔥', time: '22:42' },
-    { id: '2', user: 'StakeGod', badge: 'VIP DIAMOND', text: 'Just hit 1000x on Plinko!! LFG', time: '22:44' },
-    { id: '3', user: 'CryptoRider', text: 'Dragon Tower master mode is insane', time: '22:45' },
-    { id: '4', user: 'System', text: 'Welcome to Stake.us Remake Chat! GL & HF.', time: '22:46', isSystem: true },
+    { id: '1', user: 'System', text: 'Welcome to Stake.us Live Community Chat! GL & HF.', time: '00:00', isSystem: true },
   ]);
+
+  const chatBroadcasterRef = useRef<{ broadcastMessage: (msg: ChatMessage) => Promise<void>; unsubscribe: () => void } | null>(null);
+
+  // Subscribe to Supabase Realtime Community Chat
+  useEffect(() => {
+    fetchHistoricalChatMessages().then(history => {
+      if (history.length > 0) {
+        setChatMessages(history);
+      }
+    });
+
+    const broadcaster = initRealtimeChat(
+      incomingMsg => {
+        setChatMessages(prev => {
+          if (prev.some(m => m.id === incomingMsg.id)) return prev;
+          return [...prev.slice(-60), incomingMsg];
+        });
+      },
+      count => {
+        setOnlinePlayersCount(count);
+      },
+      currentUser?.username
+    );
+
+    chatBroadcasterRef.current = broadcaster;
+
+    return () => {
+      broadcaster.unsubscribe();
+    };
+  }, [currentUser?.username]);
 
   const broadcastFeedBet = (bet: BetHistoryItem) => {
     setBetHistory(prev => [bet, ...prev.slice(0, 19)]);
   };
 
-  const addChatMessage = (msg: ChatMessage) => {
-    setChatMessages(prev => [...prev.slice(-40), msg]);
-  };
+  const addChatMessage = useCallback((msg: ChatMessage) => {
+    setChatMessages(prev => [...prev.slice(-60), msg]);
+  }, []);
+
+  const sendRealtimeChatMessage = useCallback((msg: ChatMessage) => {
+    addChatMessage(msg);
+    chatBroadcasterRef.current?.broadcastMessage(msg);
+  }, [addChatMessage]);
 
   const modifySessionStats = (updater: (prev: SessionStats) => SessionStats) => {
     setSessionStats(updater);
@@ -381,6 +417,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       broadcastFeedBet,
       chatMessages,
       addChatMessage,
+      sendRealtimeChatMessage,
+      onlinePlayersCount,
       chatBotsEnabled,
       setChatBotsEnabled,
     }}>
